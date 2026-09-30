@@ -34,16 +34,15 @@
      home total equals the saved receipt (screenshot).
   6. Same flow in the iOS simulator — done when the owner completes it
      (manual check).
-- v1: complete check screen; processing states and retry; home complete
-  (month picker, last three, categories, empty state); history and
+- v1 = the MVP, the full PRD scope (owner decision): complete check
+  screen; processing states, retry and duplicate warning; home complete
+  (month picker, last three, categories, empty state); history, search and
   receipt detail; delete a receipt; unit price and change math in core;
   product catalog and price observations; product price history screen;
   Hesabım + privacy text + consent + delete account; camera path on iOS;
   real AI adapter (blocked on provider choice); large text pass; read-only
   admin monitoring; usability check with 5 target users.
-- Deferred: product search (source marks it optional); duplicate-content
-  warning (retries already idempotent; delete fixes the rare double);
-  Android (not in the stack); source P1 — prediction, community prices,
+- Deferred (only what the PRD leaves out): Android (not in the stack); source P1 — prediction, community prices,
   PDF/e-invoice, multi-upload, family accounts (PRD non-goals);
   notification preference (nothing sends notifications); anonymization
   for external reports (no data leaves the team).

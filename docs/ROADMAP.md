@@ -81,7 +81,9 @@ Auth → private Storage → Edge Function (mock AI, Zod) → Postgres with RLS
 
 ## v1
 
-Ordered. Each promotion from the deferred default carries its reason.
+v1 is the MVP: every PRD core interaction (owner decision 2026-09-30 —
+the full PRD scope ships, nothing in it is cut). Ordered. Each promotion
+from the deferred default carries its reason.
 
 1. [ ] **Receipt model complete in `@kefe/core` and the check screen**
        (PRD #5) — why v1: correcting AI output is the product's trust
@@ -93,12 +95,17 @@ Ordered. Each promotion from the deferred default carries its reason.
        mismatching sample shows the difference; an unsure field shows the
        text label). Failure: a guessed brand, or a mismatch hidden.
 
-2. [ ] **Processing states and retry** (PRD #4) — why v1: without it a
-       failed read strands the person. — done when: `test` — a forced
-       failure ends `başarısız` with retry; retrying and re-sending an
-       interrupted upload (same idempotency key) end in one receipt +
-       `screenshot` of the Turkish failure message with "Tekrar dene".
-       Failure: two receipts after a retry.
+2. [ ] **Processing states, retry and duplicate warning** (PRD #4,
+       #6) — why v1: without it a failed read strands the person, and the
+       same paper saved twice inflates the total. — done when: `test` —
+       a forced failure ends `başarısız` with retry; retrying and
+       re-sending an interrupted upload (same idempotency key) end in one
+       receipt; saving a receipt with the same image hash, or the same
+       store, date and total, as a saved one returns a duplicate warning
+       and deletes nothing — + `screenshot` of the Turkish failure message
+       with "Tekrar dene" and of the duplicate warning. Failure: two
+       receipts after a retry, a silent duplicate, or an automatic
+       delete.
 
 3. [ ] **Home complete** (PRD #2) — why v1: it is the first screen. Month
        selector, last three purchases, plain category summary (six
@@ -107,12 +114,15 @@ Ordered. Each promotion from the deferred default carries its reason.
        `screenshot` (empty state; two months show different totals).
        Failure: a draft or another month's receipt in the sum.
 
-4. [ ] **History and receipt detail** (PRD #7, without search) — why v1:
+4. [ ] **History, search and receipt detail** (PRD #7) — why v1:
        finding an old purchase is a core job. Newest first per month,
-       detail with items, original image via expiring signed URL, edit.
-       — done when: `test` (signed URL for another user's image refused;
-       expired URL fails) + `screenshot` (order, detail, edit reflected
-       in the home total). Failure: another user's image reachable.
+       product search, detail with items, original image via expiring
+       signed URL, edit. — done when: `test` (search returns only the
+       signed-in user's receipts containing the product; signed URL for
+       another user's image refused; expired URL fails) + `screenshot`
+       (order, a search hit, detail, edit reflected in the home total).
+       Failure: another user's receipt or image reachable, or a receipt
+       without the product in the results.
 
 5. [ ] **Delete a receipt** (PRD #9) — why v1: privacy promise; must exist
        before any real user. — done when: `test` — after delete, the
@@ -189,12 +199,8 @@ Ordered. Each promotion from the deferred default carries its reason.
 
 ## Deferred
 
-- **Product search in history** (PRD #7) — why it can wait: the source
-  marks it optional; the month picker plus product history covers
-  finding a purchase for the first users.
-- **Duplicate-content warning** (PRD #6) — why it can wait: retries are
-  already covered by idempotency (skeleton 5, v1 2); a person saving the
-  same paper twice is rare and fixable with delete.
+Only what the PRD itself leaves out; nothing inside the PRD is deferred.
+
 - **Android** — why it can wait: out of the chosen stack; PRD open
   question 1.
 - **Everything in the source P1** (repurchase prediction and

@@ -32,6 +32,15 @@
      added. This is how the battery learns. /update-stack harvests the
      classes of miss so other products' batteries can close them too. -->
 
+## 2026-09-30 — owner decision: the MVP is the full PRD
+
+- The owner chose to build the whole current PRD in the MVP instead of
+  the cut /mvp-scope proposed. Product search in history (into v1 4) and
+  the duplicate-content warning (into v1 2) moved from Deferred to v1;
+  v1 is now the MVP. The walking skeleton is unchanged and still first.
+- Still out: Android, source P1, notification preference, anonymization
+  for external reports — the PRD itself leaves them out.
+
 ## 2026-09-30 — ROADMAP written via /mvp-scope
 
 - docs/ROADMAP.md: 6-step walking skeleton (web first, iOS simulator as
