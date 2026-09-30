@@ -40,6 +40,13 @@
      added. This is how the battery learns. /update-stack harvests the
      classes of miss so other products' batteries can close them too. -->
 
+- 2026-09-30 · skeleton 4 (sign-in screen) · the battery cannot see
+  layout: `evaluator-qa` found "Göster" pushed out of the password box at
+  320 px and at 200 % text (a web `<input>` keeps an intrinsic width inside
+  a flex row; fixed with `minWidth: 0`). No test added: layout needs a
+  browser, and the battery has no browser step. Screens with an input
+  beside a button should be driven at 320 px until it has one.
+
 ## 2026-09-30 — walking skeleton step 4: sign in and the three sections (web)
 
 - `apps/mobile`: email + password sign-in and sign-up through Supabase
@@ -64,6 +71,9 @@
   shows the Turkish alert and leaves no `sb-*-auth-token` in
   localStorage, also after a reload; the right one stores it and the
   three tabs render; sign-out clears it.
+- `evaluator-qa`: NEEDS_WORK on the first pass ("Göster" clipped at
+  320 px and 200 % text; tabs without `aria-selected` on the web), PASS
+  after the fix. Screenshots in `docs/screenshots/skeleton-step-4/`.
 - Pitfall: `CI=1 npx expo start --web` does not watch files; restart it
   (with `--clear`) after edits or the old bundle is served.
 - Open: iOS keeps the session in memory only (no localStorage); step 6
