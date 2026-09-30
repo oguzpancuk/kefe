@@ -6,3 +6,6 @@ build/
 *.log
 .DS_Store
 .claude/settings.local.json
+.expo/
+expo-env.d.ts
+*.tsbuildinfo

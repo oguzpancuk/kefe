@@ -15,37 +15,38 @@ Spec: `docs/PRD.md` · Build order: `docs/ROADMAP.md` · Working notes:
 `docs/NOTES.md` · Decisions: `docs/adr/`
 
 ## Stack & commands
+
 TypeScript (strict) on Node 22 · Expo (React Native) + Expo Router for the
 iOS and web app · Vite + React for the admin SPA · Supabase (Postgres +
 RLS, Auth, private Storage, Edge Functions) for the backend · Vitest ·
-ESLint + Prettier · npm workspaces monorepo. Stack rationale: write it as
-`docs/adr/0002-stack.md` in the walking skeleton's first step.
+ESLint + Prettier · npm workspaces monorepo. Stack rationale:
+`docs/adr/0002-stack.md`.
 
-| Path | What |
-|---|---|
-| `apps/mobile` | Expo app, iOS and web from one codebase (`@kefe/mobile`) |
-| `apps/admin` | Admin SPA for monitoring data, read-only (`@kefe/admin`) |
-| `packages/core` | Pure TS domain: money, units, unit price, receipt schema (`@kefe/core`) |
-| `supabase/` | Migrations, RLS, Edge Functions, and the suite that tests them (`@kefe/supabase`) |
+| Path            | What                                                                              |
+| --------------- | --------------------------------------------------------------------------------- |
+| `apps/mobile`   | Expo app, iOS and web from one codebase (`@kefe/mobile`)                          |
+| `apps/admin`    | Admin SPA for monitoring data, read-only (`@kefe/admin`)                          |
+| `packages/core` | Pure TS domain: money, units, unit price, receipt schema (`@kefe/core`)           |
+| `supabase/`     | Migrations, RLS, Edge Functions, and the suite that tests them (`@kefe/supabase`) |
 
 The layout and the workspace scripts below are the contract the walking
-skeleton's first step creates; until then only `verify.sh` exists and it
-fails by design.
+skeleton's first step created; `verify.sh` runs them.
 
-| Purpose | Command |
-|---|---|
-| install | `npm ci` |
-| test | `npm run test --workspaces --if-present` (the `@kefe/supabase` suite needs the local stack) |
-| typecheck | `npm run typecheck --workspaces --if-present` |
-| lint | `npm run lint --workspaces --if-present` and `npx prettier --check .` |
-| local backend | `npx supabase start` (needs Docker; not available in a cloud thread) |
-| dev (web) | `npm run web -w @kefe/mobile` (Expo web) |
-| dev (iOS) | `npm run ios -w @kefe/mobile` (simulator, owner's Mac only) |
-| dev (admin) | `npm run dev -w @kefe/admin` |
-| build | `npm run build:web -w @kefe/mobile` and `npm run build -w @kefe/admin` |
-| full battery | `bash .claude/hooks/verify.sh` |
+| Purpose       | Command                                                                                     |
+| ------------- | ------------------------------------------------------------------------------------------- |
+| install       | `npm ci`                                                                                    |
+| test          | `npm run test --workspaces --if-present` (the `@kefe/supabase` suite needs the local stack) |
+| typecheck     | `npm run typecheck --workspaces --if-present`                                               |
+| lint          | `npm run lint --workspaces --if-present` and `npx prettier --check .`                       |
+| local backend | `npx supabase start` (needs Docker; not available in a cloud thread)                        |
+| dev (web)     | `npm run web -w @kefe/mobile` (Expo web)                                                    |
+| dev (iOS)     | `npm run ios -w @kefe/mobile` (simulator, owner's Mac only)                                 |
+| dev (admin)   | `npm run dev -w @kefe/admin`                                                                |
+| build         | `npm run build:web -w @kefe/mobile` and `npm run build -w @kefe/admin`                      |
+| full battery  | `bash .claude/hooks/verify.sh`                                                              |
 
 ## Standards
+
 - Strict typing where the language offers it; schema validation at every
   external boundary. `any`/untyped escape hatches need a `// why:` comment.
 - Every feature lands with the verification its ROADMAP done-when clause
@@ -72,6 +73,7 @@ fails by design.
 - UI copy is Turkish and plain; code, comments and docs are English.
 
 ## Verification
+
 - `bash .claude/hooks/verify.sh` is the single battery. CI runs the same
   file as the required check on every pull request.
 - Run it before opening a pull request, on a clean committed HEAD
@@ -91,6 +93,7 @@ fails by design.
 - Never report a check you did not run.
 
 ## Workflow
+
 - Work on a branch, never on `main`; land through a pull request.
 - Read `docs/ROADMAP.md` and `docs/NOTES.md` when starting. When stopping,
   append a dated entry to `docs/NOTES.md`; decisions that constrain the
@@ -104,6 +107,7 @@ fails by design.
   owner's.
 
 ## Looking at it
+
 There is no preview URL. A thread runs the web surface in its own
 container, drives it (`evaluator-qa`, the screenshot command) and puts
 the screenshots in the pull request body: that is what the owner sees of
@@ -117,6 +121,7 @@ needs data needs the backend, and a thread has no Docker: such a screen
 is checked against the mock/seed data path, or it is a `manual check`.
 
 ## Deploy
+
 Deploys are the owner's, run from a LOCAL Claude Code session through
 /deploy-checklist: the deploy commands run on the owner's machine, with
 credentials that live only there — in no cloud environment and no Actions
