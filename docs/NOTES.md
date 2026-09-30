@@ -47,6 +47,46 @@
   browser, and the battery has no browser step. Screens with an input
   beside a button should be driven at 320 px until it has one.
 
+## 2026-09-30 — walking skeleton step 5: Fiş ekle → Kontrol et → Kaydet on web
+
+- Migration `20260930100000_save_receipt.sql`: `saved_at` on receipts, a
+  check that a saved receipt has `saved_at` and a total, and
+  `save_receipt(p_idempotency_key, p_items)` (security invoker, row lock,
+  idempotent: a saved receipt is returned unchanged, later edits ignored).
+  It applies the corrected item amounts and sets the saved total to the
+  sum of the items.
+- `@kefe/core`: `monthTotal` (saved receipts only; month of the printed
+  date, else of `saved_at` in Turkey time), `sumKurus`, `formatTl`,
+  `formatTlAmount`, `formatDate`, `formatMonth`, `istanbulMonth`.
+- Web flow: Ana Sayfa (month total 40 pt, "Fiş ekle" 72 high) → photo
+  picker → Kontrol et ("Fiş okunuyor", then the draft with the sample
+  banner) → "Kalemi düzelt" for one amount → "Kaydet" → Ana Sayfa with
+  "Fiş kaydedildi.". New dependencies `expo-image-picker` and
+  `expo-crypto` (Expo's own modules, needed for iOS in step 6 too).
+- Red runs: core 16 of 22 new tests failing against a stub that summed
+  every receipt; app receipts calls 9 of 11 failing against a stub;
+  `save-receipt.test.ts` failing in CI on the first commit of PR #7
+  (no `save_receipt` yet).
+- Verified: migration applied to a scratch Postgres 16 with stubbed
+  `auth`/`storage` and exercised as `authenticated` (refusals for B's key,
+  a foreign item, 12.5, a duplicated item; double save returns the same
+  row; direct `status = 'saved'` without `saved_at` refused). Web flow
+  driven with Playwright against an in-memory fake of the Supabase HTTP
+  APIs; screenshots in `docs/screenshots/skeleton-step-5/`.
+- Decision to revisit in v1 1: the saved total is the sum of the checked
+  items, not the printed total. With the mock they agree; when the total
+  becomes its own editable field (mismatch warning), `save_receipt` must
+  keep the printed total and the raw extraction next to the corrections.
+- Open: owners can still PATCH `status`/`total_kurus`/`saved_at` directly
+  through PostgREST (their own rows only); a column-level grant or a
+  trigger should make `save_receipt` the only way to `saved`.
+- Open: the month total reads every saved receipt of the person and core
+  picks the month; v1 3 (month picker) should filter by month in the query.
+- Open: a web reload on Kontrol et while the receipt is still being sent
+  loses the in-memory send; the page then shows "Fiş okunamadı." (retry
+  is v1 2).
+- Next ROADMAP item: skeleton step 6.
+
 ## 2026-09-30 — walking skeleton step 4: sign in and the three sections (web)
 
 - `apps/mobile`: email + password sign-in and sign-up through Supabase

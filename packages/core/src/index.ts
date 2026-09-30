@@ -21,4 +21,4 @@ export {
   monthTotal,
   sumKurus,
 } from "./spending.ts";
-export type { MonthTotal, ReceiptForTotal } from "./spending.ts";
+export type { Month, MonthTotal, ReceiptForTotal } from "./spending.ts";
