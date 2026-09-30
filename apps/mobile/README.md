@@ -27,3 +27,15 @@ keeps it in memory until skeleton step 6 gives it a persistent store.
 
 Atkinson Hyperlegible Next (weights 400, 600, 700, 800) under the SIL Open
 Font License, `assets/fonts/OFL.txt`.
+
+## Adding a receipt
+
+"Fiş ekle" on Ana Sayfa opens the photo picker (`expo-image-picker`; the
+camera path is ROADMAP v1 10). The image goes to the private `receipts`
+bucket under the person's folder, the receipt row is created with a fresh
+idempotency key (`expo-crypto`), and `extract-receipt` reads it in mock
+mode. Kontrol et shows "Fiş okunuyor" meanwhile, then the draft with the
+"Örnek veri — fişiniz okunmadı" banner. "Kaydet" calls `save_receipt`
+with that key, so a double tap or a retry saves once. The month total on
+Ana Sayfa is summed and formatted by `@kefe/core` from saved receipts
+only. The calls live in `src/receipts/receipts.ts`.

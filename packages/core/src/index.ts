@@ -12,3 +12,20 @@ export type {
   ExtractionErrorCode,
   ExtractionResult,
 } from "./receipt.ts";
+export {
+  formatDate,
+  formatMonth,
+  formatTl,
+  formatTlAmount,
+  istanbulDate,
+  istanbulMonth,
+  monthRange,
+  monthTotal,
+  sumKurus,
+} from "./spending.ts";
+export type {
+  Month,
+  MonthRange,
+  MonthTotal,
+  ReceiptForTotal,
+} from "./spending.ts";

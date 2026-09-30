@@ -8,6 +8,7 @@ export const color = {
   primary: "#216B8F",
   primaryPressed: "#185472",
   primaryTint: "#E6F0F5",
+  primaryTintStrong: "#CFE2EC",
   onPrimary: "#FFFFFF",
   background: "#F7F5F2",
   surface: "#FFFFFF",
@@ -36,6 +37,7 @@ export const screenPadding = 20;
 export const radius = {
   input: 12,
   button: 14,
+  buttonHero: 18,
   card: 16,
   pill: 999,
 } as const;
@@ -43,11 +45,13 @@ export const radius = {
 export const minHeight = {
   touch: 48,
   button: 56,
+  buttonHero: 72,
   input: 56,
+  listRow: 64,
   tabBar: 88,
 } as const;
 
-export const icon = { default: 24, tab: 28 } as const;
+export const icon = { default: 24, tab: 28, hero: 30 } as const;
 
 export const border = {
   hairline: 1,
@@ -80,6 +84,7 @@ export const textToken = {
   figure: { size: 24, lineHeight: 30, weight: 800 },
   section: { size: 22, lineHeight: 28, weight: 700 },
   button: { size: 19, lineHeight: 24, weight: 700 },
+  buttonHero: { size: 22, lineHeight: 28, weight: 700 },
   input: { size: 19, lineHeight: 24, weight: 400 },
   body: { size: 18, lineHeight: 26, weight: 400 },
   bodyStrong: { size: 18, lineHeight: 24, weight: 700 },
@@ -95,9 +100,13 @@ const style = (token: TextToken): TextStyle => ({
 });
 
 export const type = {
+  // The month total only (DESIGN.md, Type); tabular figures.
+  hero: { ...style(textToken.hero), fontVariant: ["tabular-nums"] },
   title: style(textToken.title),
+  figure: { ...style(textToken.figure), fontVariant: ["tabular-nums"] },
   section: style(textToken.section),
   button: style(textToken.button),
+  buttonHero: style(textToken.buttonHero),
   input: style(textToken.input),
   body: style(textToken.body),
   bodyStrong: style(textToken.bodyStrong),

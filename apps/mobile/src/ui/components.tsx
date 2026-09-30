@@ -1,6 +1,7 @@
 import { useState, type ReactNode } from "react";
 import {
   ActivityIndicator,
+  Platform,
   Pressable,
   ScrollView,
   StyleSheet,
@@ -10,7 +11,13 @@ import {
   type TextInputProps,
 } from "react-native";
 import { useSafeAreaInsets } from "react-native-safe-area-context";
-import { AlertIcon, CheckIcon, ChevronLeftIcon } from "./icons";
+import {
+  AlertIcon,
+  CheckIcon,
+  ChevronLeftIcon,
+  ChevronRightIcon,
+  FlaskIcon,
+} from "./icons";
 import {
   border,
   color,
@@ -64,12 +71,15 @@ export function Card({ children }: { children: ReactNode }) {
 type ButtonProps = {
   label: string;
   onPress: () => void;
-  variant?: "primary" | "secondary";
+  variant?: "primary" | "secondary" | "hero";
   busy?: boolean;
   icon?: (props: { color: string; size: number }) => ReactNode;
 };
 
-/** Primary: filled blue, one per screen. Secondary: white, 2 px blue border. */
+/**
+ * Primary: filled blue, one per screen. Secondary: white, 2 px blue border.
+ * Hero: "Fiş ekle" only, the one 72-high button in the app (DESIGN.md).
+ */
 export function Button({
   label,
   onPress,
@@ -77,7 +87,8 @@ export function Button({
   busy = false,
   icon: Icon,
 }: ButtonProps) {
-  const primary = variant === "primary";
+  const hero = variant === "hero";
+  const primary = variant === "primary" || hero;
   const foreground = primary ? color.onPrimary : color.primary;
   return (
     <Pressable
@@ -88,6 +99,7 @@ export function Button({
       style={({ pressed }) => [
         styles.button,
         primary ? styles.buttonPrimary : styles.buttonSecondary,
+        hero && styles.buttonHero,
         pressed &&
           (primary ? styles.buttonPrimaryPressed : styles.buttonPressed),
       ]}
@@ -95,9 +107,15 @@ export function Button({
       {busy ? (
         <ActivityIndicator color={foreground} />
       ) : (
-        Icon?.({ color: foreground, size: icon.default })
+        Icon?.({ color: foreground, size: hero ? icon.hero : icon.default })
       )}
-      <Text style={[type.button, styles.buttonText, { color: foreground }]}>
+      <Text
+        style={[
+          hero ? type.buttonHero : type.button,
+          styles.buttonText,
+          { color: foreground },
+        ]}
+      >
         {label}
       </Text>
     </Pressable>
@@ -131,6 +149,8 @@ type TextFieldProps = {
   invalid?: boolean;
   hint?: string;
   secret?: boolean;
+  /** A unit written inside the box, after the text ("TL"). */
+  suffix?: string;
 } & Pick<
   TextInputProps,
   | "placeholder"
@@ -139,6 +159,8 @@ type TextFieldProps = {
   | "textContentType"
   | "onSubmitEditing"
   | "returnKeyType"
+  | "inputMode"
+  | "autoFocus"
 >;
 
 /** Label above in 16/700; 19 text; error = 2 px red border (DESIGN.md: input). */
@@ -149,6 +171,7 @@ export function TextField({
   invalid = false,
   hint,
   secret = false,
+  suffix,
   ...inputProps
 }: TextFieldProps) {
   const [shown, setShown] = useState(false);
@@ -161,7 +184,7 @@ export function TextField({
           {...inputProps}
           value={value}
           onChangeText={onChangeText}
-          accessibilityLabel={label}
+          accessibilityLabel={suffix ? `${label} (${suffix})` : label}
           accessibilityHint={hint}
           aria-invalid={invalid}
           secureTextEntry={secret && !shown}
@@ -170,6 +193,11 @@ export function TextField({
           placeholderTextColor={color.textMuted}
           style={[type.input, styles.input]}
         />
+        {suffix ? (
+          <Text style={[type.bodyStrong, styles.suffix]} aria-hidden>
+            {suffix}
+          </Text>
+        ) : null}
         {secret ? (
           <Pressable
             onPress={() => setShown((s) => !s)}
@@ -221,6 +249,69 @@ export function Alert({
   );
 }
 
+/** A bar pinned under a scrolling screen, for its one main action. */
+export function Footer({ children }: { children: ReactNode }) {
+  const insets = useSafeAreaInsets();
+  return (
+    <View style={[styles.footer, { paddingBottom: insets.bottom + space.md }]}>
+      <View style={styles.column}>{children}</View>
+    </View>
+  );
+}
+
+/** "Örnek veri — fişiniz okunmadı": top of every screen with mock data. */
+export function SampleBanner() {
+  return (
+    <View style={styles.sample}>
+      <FlaskIcon color={color.text} />
+      <Text style={[type.bodyStrong, styles.sampleText]}>
+        Örnek veri — fişiniz okunmadı
+      </Text>
+    </View>
+  );
+}
+
+/** A tappable list row: title left, amount right, chevron (DESIGN.md). */
+export function ListRow({
+  title,
+  amount,
+  onPress,
+  last = false,
+}: {
+  title: string;
+  amount: string;
+  onPress: () => void;
+  last?: boolean;
+}) {
+  return (
+    <Pressable
+      onPress={onPress}
+      accessibilityRole="button"
+      accessibilityLabel={`${title}, ${amount}`}
+      accessibilityHint="Düzeltmek için dokunun"
+      style={({ pressed }) => [
+        styles.row,
+        !last && styles.rowDivider,
+        pressed && styles.rowPressed,
+      ]}
+    >
+      <Text style={[type.bodyStrong, styles.rowTitle]}>{title}</Text>
+      <Text style={[type.bodyStrong, styles.rowAmount]}>{amount}</Text>
+      <ChevronRightIcon color={color.textMuted} />
+    </Pressable>
+  );
+}
+
+/** The receipt's line exactly as printed, in monospace (DESIGN.md: Type). */
+export function RawLine({ children }: { children: string }) {
+  return (
+    <View style={styles.raw}>
+      <Text style={type.caption}>Fişte yazan</Text>
+      <Text style={[type.body, styles.rawText]}>{children}</Text>
+    </View>
+  );
+}
+
 const styles = StyleSheet.create({
   screen: { flex: 1, backgroundColor: color.background },
   screenContent: {
@@ -253,6 +344,10 @@ const styles = StyleSheet.create({
     gap: space.sm,
   },
   buttonPrimary: { backgroundColor: color.primary },
+  buttonHero: {
+    minHeight: minHeight.buttonHero,
+    borderRadius: radius.buttonHero,
+  },
   buttonPrimaryPressed: { backgroundColor: color.primaryPressed },
   buttonSecondary: {
     backgroundColor: color.surface,
@@ -290,6 +385,7 @@ const styles = StyleSheet.create({
     paddingHorizontal: space.md,
     paddingVertical: space.sm,
   },
+  suffix: { color: color.textMuted, paddingHorizontal: space.md },
   reveal: {
     minHeight: minHeight.touch,
     justifyContent: "center",
@@ -304,4 +400,47 @@ const styles = StyleSheet.create({
     padding: space.md,
   },
   alertText: { flex: 1 },
+  footer: {
+    backgroundColor: color.background,
+    borderTopWidth: border.hairline,
+    borderTopColor: color.border,
+    paddingHorizontal: screenPadding,
+    paddingTop: space.md,
+  },
+  sample: {
+    flexDirection: "row",
+    alignItems: "center",
+    gap: space.sm,
+    backgroundColor: color.surfaceMuted,
+    borderColor: color.borderStrong,
+    borderWidth: border.input,
+    borderStyle: "dashed",
+    borderRadius: radius.input,
+    padding: space.md,
+  },
+  sampleText: { flex: 1 },
+  row: {
+    minHeight: minHeight.listRow,
+    flexDirection: "row",
+    alignItems: "center",
+    gap: space.sm,
+    paddingHorizontal: space.md,
+    paddingVertical: space.sm,
+  },
+  rowDivider: {
+    borderBottomWidth: border.hairline,
+    borderBottomColor: color.border,
+  },
+  rowPressed: { backgroundColor: color.primaryTint },
+  rowTitle: { flex: 1 },
+  rowAmount: { fontVariant: ["tabular-nums"] },
+  raw: {
+    backgroundColor: color.surfaceMuted,
+    borderRadius: radius.input,
+    padding: space.md,
+    gap: space.xxs,
+  },
+  rawText: {
+    fontFamily: Platform.select({ ios: "Menlo", default: "monospace" }),
+  },
 });

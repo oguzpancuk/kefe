@@ -1,0 +1,346 @@
+import {
+  formatDate,
+  formatTl,
+  formatTlAmount,
+  InvalidTlAmountError,
+  parseTlAmount,
+  sumKurus,
+  type Kurus,
+} from "@kefe/core";
+import { router, useLocalSearchParams } from "expo-router";
+import { useEffect, useState } from "react";
+import { StyleSheet, Text, View } from "react-native";
+import { noteSaved, sendingOf } from "../../src/receipts/pending";
+import {
+  loadDraft,
+  saveReceipt,
+  type Draft,
+  type DraftItem,
+  type Failure,
+} from "../../src/receipts/receipts";
+import { supabase } from "../../src/supabase";
+import {
+  Alert,
+  BackButton,
+  Button,
+  Card,
+  Footer,
+  ListRow,
+  RawLine,
+  SampleBanner,
+  Screen,
+  TextField,
+  Title,
+} from "../../src/ui/components";
+import { Mark } from "../../src/ui/icons";
+import { color, radius, space, type } from "../../src/ui/theme";
+
+type State =
+  | { kind: "reading" }
+  | { kind: "failed"; failure: Failure }
+  | { kind: "draft"; draft: Draft };
+
+const notReadable: Failure = {
+  title: "Fiş okunamadı.",
+  detail: "Ana Sayfa'ya dönüp fişi yeniden ekleyin.",
+};
+
+const goHome = () => router.replace("/");
+
+// Kontrol et (docs/design/screens/07-FisOkunuyor.png, 08-KontrolEt.png):
+// "Fiş okunuyor" while the receipt is sent and read, then the draft with
+// its items; an item opens "Kalemi düzelt" (09-KalemDuzenle.png) where
+// its amount can be corrected; "Kaydet" saves once, however often it is
+// pressed. "Vazgeç" leaves the draft unsaved: it never counts.
+export default function Check() {
+  const { id } = useLocalSearchParams<{ id?: string }>();
+  const [state, setState] = useState<State>({ kind: "reading" });
+  // Corrected amounts by item id; the draft keeps what was read.
+  const [edits, setEdits] = useState<ReadonlyMap<string, Kurus>>(new Map());
+  const [editing, setEditing] = useState<DraftItem | null>(null);
+  const [saving, setSaving] = useState(false);
+  const [saveFailure, setSaveFailure] = useState<Failure | null>(null);
+
+  useEffect(() => {
+    const client = supabase;
+    if (!client || !id) {
+      setState({ kind: "failed", failure: notReadable });
+      return;
+    }
+    let current = true;
+    void (async () => {
+      const sent = await sendingOf(id);
+      if (!current) return;
+      if (sent && !sent.ok) {
+        setState({ kind: "failed", failure: sent.failure });
+        return;
+      }
+      const loaded = await loadDraft(client, id);
+      if (!current) return;
+      if (!loaded.ok) {
+        setState({ kind: "failed", failure: loaded.failure });
+      } else if (loaded.draft.status === "saved") {
+        goHome();
+      } else if (loaded.draft.status !== "needs_review") {
+        setState({ kind: "failed", failure: notReadable });
+      } else {
+        setState({ kind: "draft", draft: loaded.draft });
+      }
+    })();
+    return () => {
+      current = false;
+    };
+  }, [id]);
+
+  if (state.kind === "reading") return <Reading />;
+
+  if (state.kind === "failed") {
+    return (
+      <Screen center>
+        <Alert
+          tone="danger"
+          title={state.failure.title}
+          detail={state.failure.detail}
+        />
+        <Button label="Ana Sayfa'ya dön" onPress={goHome} />
+      </Screen>
+    );
+  }
+
+  const { draft } = state;
+  const amountOf = (item: DraftItem) => edits.get(item.id) ?? item.amountKurus;
+
+  if (editing) {
+    return (
+      <EditItem
+        key={editing.id}
+        item={editing}
+        amountKurus={amountOf(editing)}
+        onBack={() => setEditing(null)}
+        onDone={(amountKurus) => {
+          setEdits((previous) =>
+            new Map(previous).set(editing.id, amountKurus),
+          );
+          setEditing(null);
+        }}
+      />
+    );
+  }
+
+  async function save() {
+    const client = supabase;
+    if (!client || saving) return;
+    setSaving(true);
+    setSaveFailure(null);
+    const changed = draft.items
+      .filter((item) => amountOf(item) !== item.amountKurus)
+      .map((item) => ({ id: item.id, amountKurus: amountOf(item) }));
+    const result = await saveReceipt(client, draft.idempotencyKey, changed);
+    if (result.ok) {
+      noteSaved();
+      router.replace("/");
+      return;
+    }
+    setSaving(false);
+    setSaveFailure(result.failure);
+  }
+
+  return (
+    <View style={styles.page}>
+      <Screen>
+        <BackButton to="Vazgeç" onPress={goHome} />
+        <View style={styles.heading}>
+          <Title>Kontrol et</Title>
+          <Text style={type.caption}>
+            Yanlış bir şey varsa üstüne dokunup düzeltin.
+          </Text>
+        </View>
+        {draft.isSample ? <SampleBanner /> : null}
+        <Card>
+          <View style={styles.facts}>
+            <View>
+              <Text style={type.caption}>Mağaza</Text>
+              <Text style={type.bodyStrong}>
+                {draft.storeName ?? "Okunamadı"}
+              </Text>
+            </View>
+            <View style={styles.divider} />
+            <View style={styles.dateTotal}>
+              <View style={styles.date}>
+                <Text style={type.caption}>Tarih</Text>
+                <Text style={type.bodyStrong}>
+                  {draft.purchasedOn
+                    ? formatDate(draft.purchasedOn)
+                    : "Okunamadı"}
+                </Text>
+              </View>
+              <View style={styles.totalBox}>
+                <Text style={[type.caption, styles.right]}>Toplam</Text>
+                <Text style={[type.figure, styles.right]}>
+                  {formatTl(sumKurus(draft.items.map(amountOf)))}
+                </Text>
+              </View>
+            </View>
+          </View>
+        </Card>
+        <View style={styles.list}>
+          {draft.items.map((item, index) => (
+            <ListRow
+              key={item.id}
+              title={item.name ?? item.rawText}
+              amount={formatTl(amountOf(item))}
+              last={index === draft.items.length - 1}
+              onPress={() => setEditing(item)}
+            />
+          ))}
+        </View>
+        {saveFailure ? (
+          <Alert
+            tone="danger"
+            title={saveFailure.title}
+            detail={saveFailure.detail}
+          />
+        ) : null}
+      </Screen>
+      <Footer>
+        <Button label="Kaydet" onPress={save} busy={saving} />
+      </Footer>
+    </View>
+  );
+}
+
+/** Only the mark and "Fiş okunuyor": no state name, no steps (PRD #4). */
+function Reading() {
+  const [lit, setLit] = useState(0);
+  useEffect(() => {
+    const timer = setInterval(() => setLit((n) => (n + 1) % 3), 450);
+    return () => clearInterval(timer);
+  }, []);
+  return (
+    <Screen center>
+      <View style={styles.reading}>
+        <View style={styles.markCircle}>
+          <Mark size={104} />
+        </View>
+        <Text
+          style={[type.title, styles.center]}
+          accessibilityRole="header"
+          accessibilityLiveRegion="polite"
+        >
+          Fiş okunuyor
+        </Text>
+        <View style={styles.dots} aria-hidden>
+          {[0, 1, 2].map((n) => (
+            <View key={n} style={[styles.dot, n === lit && styles.dotLit]} />
+          ))}
+        </View>
+      </View>
+    </Screen>
+  );
+}
+
+/** Kalemi düzelt: the printed line, the name and the amount. */
+function EditItem({
+  item,
+  amountKurus,
+  onBack,
+  onDone,
+}: {
+  item: DraftItem;
+  amountKurus: Kurus;
+  onBack: () => void;
+  onDone: (amountKurus: Kurus) => void;
+}) {
+  const [text, setText] = useState(formatTlAmount(amountKurus));
+  const [invalid, setInvalid] = useState(false);
+
+  function done() {
+    try {
+      onDone(parseTlAmount(text));
+    } catch (error) {
+      if (!(error instanceof InvalidTlAmountError)) throw error;
+      setInvalid(true);
+    }
+  }
+
+  return (
+    <View style={styles.page}>
+      <Screen>
+        <BackButton to="Kontrol et" onPress={onBack} />
+        <Title>Kalemi düzelt</Title>
+        <RawLine>{item.rawText}</RawLine>
+        <View style={styles.name}>
+          <Text style={type.label}>Ürün adı</Text>
+          <Text style={type.bodyStrong}>{item.name ?? "Okunamadı"}</Text>
+        </View>
+        {invalid ? (
+          <Alert
+            tone="danger"
+            title="Tutar anlaşılamadı."
+            detail="Tutarı 12,50 gibi, virgülle yazın."
+          />
+        ) : null}
+        <TextField
+          label="Tutar"
+          value={text}
+          onChangeText={(value) => {
+            setText(value);
+            setInvalid(false);
+          }}
+          suffix="TL"
+          invalid={invalid}
+          inputMode="decimal"
+          keyboardType="decimal-pad"
+          returnKeyType="done"
+          onSubmitEditing={done}
+        />
+      </Screen>
+      <Footer>
+        <Button label="Tamam" onPress={done} />
+      </Footer>
+    </View>
+  );
+}
+
+const styles = StyleSheet.create({
+  page: { flex: 1, backgroundColor: color.background },
+  heading: { gap: space.xs },
+  facts: { gap: space.md },
+  divider: { height: 1, backgroundColor: color.border },
+  dateTotal: {
+    flexDirection: "row",
+    flexWrap: "wrap",
+    justifyContent: "space-between",
+    alignItems: "flex-end",
+    gap: space.sm,
+  },
+  date: { flexShrink: 1 },
+  totalBox: { marginLeft: "auto" },
+  right: { textAlign: "right" },
+  list: {
+    backgroundColor: color.surface,
+    borderColor: color.border,
+    borderWidth: 1,
+    borderRadius: radius.card,
+    overflow: "hidden",
+  },
+  name: { gap: space.xxs },
+  reading: { alignItems: "center", gap: space.xl },
+  markCircle: {
+    width: 176,
+    height: 176,
+    borderRadius: radius.pill,
+    backgroundColor: color.primaryTint,
+    alignItems: "center",
+    justifyContent: "center",
+  },
+  center: { textAlign: "center" },
+  dots: { flexDirection: "row", gap: space.sm },
+  dot: {
+    width: 12,
+    height: 12,
+    borderRadius: radius.pill,
+    backgroundColor: color.primaryTintStrong,
+  },
+  dotLit: { backgroundColor: color.primary },
+});

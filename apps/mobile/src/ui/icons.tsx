@@ -105,6 +105,32 @@ export function ChevronLeftIcon(props: IconProps) {
   );
 }
 
+export function ChevronRightIcon(props: IconProps) {
+  return (
+    <Line {...props}>
+      <Path d="m9 5 7 7-7 7" />
+    </Line>
+  );
+}
+
+export function PlusIcon(props: IconProps) {
+  return (
+    <Line {...props}>
+      <Path d="M12 5v14M5 12h14" />
+    </Line>
+  );
+}
+
+/** The flask on the "Örnek veri" banner (DESIGN.md: sample banner). */
+export function FlaskIcon(props: IconProps) {
+  return (
+    <Line {...props}>
+      <Path d="M9 3h6M10 3v6l-5.5 9.5A1.7 1.7 0 0 0 6 21h12a1.7 1.7 0 0 0 1.5-2.5L14 9V3" />
+      <Path d="M7.5 15h9" />
+    </Line>
+  );
+}
+
 /** The kefe scale-pan mark, from docs/design/logo/mark.svg. */
 export function Mark({ size = 48 }: { size?: number }) {
   return (
