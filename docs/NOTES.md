@@ -40,6 +40,19 @@
      added. This is how the battery learns. /update-stack harvests the
      classes of miss so other products' batteries can close them too. -->
 
+## 2026-09-30 — visual design from the logo
+
+- Owner asked to design the screens from the new logo before building.
+  Delivered a design canvas on claude.ai (16 screens + design system
+  sheet) and, in the repo, `docs/design/` (DESIGN.md, tokens.json, logo
+  assets, PNG renders) and ADR-0003 (palette, Atkinson Hyperlegible Next).
+- Verified: contrast of every text/background pair computed (all AA);
+  screens rendered with Playwright and looked at; prettier on the docs.
+  No code changed, so no screenshot of the app itself.
+- Open: sign-up, forgot-password, privacy text page, delete-account
+  confirmation and admin tables are not drawn yet (listed in DESIGN.md).
+  Next ROADMAP item unchanged: skeleton step 2.
+
 ## 2026-09-30 — walking skeleton step 1: monorepo boots
 
 - Workspaces `@kefe/core`, `@kefe/mobile` (Expo 57 + Expo Router, one

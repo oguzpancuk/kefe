@@ -156,7 +156,8 @@ take the photo → check → save.
     save → home → history → product history) can be completed with no
     clipped or overlapping controls; every icon has a visible Turkish
     label; touch targets are at least 48×48; body text is at least 16 and
-    key figures 18–24; no state is shown by colour alone; the first launch
+    key figures 18–24 (one exception, owner
+    decision 2026-09-30: the home screen's month total is 40); no state is shown by colour alone; the first launch
     asks for no permission (camera is asked only when the camera is
     chosen).
 
