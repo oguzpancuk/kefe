@@ -1,9 +1,9 @@
 import { useState } from "react";
 import { StyleSheet, Text, View } from "react-native";
-import { signOut } from "../../src/auth/auth";
+import { signOut, type AuthFailure } from "../../src/auth/auth";
 import { useAuth } from "../../src/auth/AuthProvider";
 import { supabase } from "../../src/supabase";
-import { Button, Card, Screen, Title } from "../../src/ui/components";
+import { Alert, Button, Card, Screen, Title } from "../../src/ui/components";
 import { SignOutIcon, UserIcon } from "../../src/ui/icons";
 import { color, radius, space, type } from "../../src/ui/theme";
 
@@ -12,13 +12,19 @@ import { color, radius, space, type } from "../../src/ui/theme";
 export default function Account() {
   const auth = useAuth();
   const [busy, setBusy] = useState(false);
+  const [failure, setFailure] = useState<AuthFailure | null>(null);
   const email = auth.status === "signedIn" ? auth.session.user.email : null;
 
   async function leave() {
-    if (!supabase) return;
+    if (!supabase || busy) return;
     setBusy(true);
+    setFailure(null);
     // Once the session is gone the layout sends the person to sign-in.
-    await signOut(supabase.auth);
+    const result = await signOut(supabase.auth);
+    if (!result.ok) {
+      setBusy(false);
+      setFailure(result.failure);
+    }
   }
 
   return (
@@ -35,6 +41,9 @@ export default function Account() {
           </View>
         </View>
       </Card>
+      {failure ? (
+        <Alert tone="danger" title={failure.title} detail={failure.detail} />
+      ) : null}
       <Button
         label="Çıkış yap"
         variant="secondary"

@@ -66,6 +66,7 @@ export default function SignUp() {
         label="E-posta"
         value={email}
         onChangeText={setEmail}
+        invalid={failure?.field === "email"}
         placeholder="E-posta adresinizi yazın"
         keyboardType="email-address"
         autoComplete="email"
@@ -77,7 +78,7 @@ export default function SignUp() {
         value={password}
         onChangeText={setPassword}
         secret
-        invalid={failure !== null}
+        invalid={failure?.field === "password"}
         placeholder="Bir şifre seçin"
         autoComplete="new-password"
         textContentType="newPassword"

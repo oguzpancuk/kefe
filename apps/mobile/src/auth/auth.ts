@@ -11,17 +11,36 @@ import {
 
 type Auth = SupabaseClient["auth"];
 
-/** A Turkish message for the alert box: a bold first sentence, a plain second. */
-export type AuthFailure = { title: string; detail: string };
+/**
+ * A Turkish message for the alert box: a bold first sentence, a plain
+ * second. `field` names the input the failure is about, so only that one is
+ * marked; connection and rate-limit failures concern neither.
+ */
+export type AuthFailure = {
+  title: string;
+  detail: string;
+  field?: "email" | "password";
+};
 
 export type SignInResult = { ok: true } | { ok: false; failure: AuthFailure };
 
 export type SignUpResult =
   { ok: true; signedIn: boolean } | { ok: false; failure: AuthFailure };
 
-const missingFields: AuthFailure = {
-  title: "Bilgiler eksik.",
-  detail: "E-posta adresinizi ve şifrenizi yazın.",
+/** The first empty field, or `null` when both are filled. */
+function missingField(email: string, password: string): AuthFailure | null {
+  if (email && password) return null;
+  return {
+    title: "Bilgiler eksik.",
+    detail: "E-posta adresinizi ve şifrenizi yazın.",
+    field: email ? "password" : "email",
+  };
+}
+
+const existingAccount: AuthFailure = {
+  title: "Hesap açılamadı.",
+  detail: "Bu e-posta ile zaten bir hesap var. Giriş yapmayı deneyin.",
+  field: "email",
 };
 
 const noConnection: AuthFailure = {
@@ -61,6 +80,7 @@ function signInFailure(error: AuthError): AuthFailure {
       title,
       detail:
         "Önce e-postanıza gelen bağlantıya tıklayın, sonra tekrar deneyin.",
+      field: "email",
     };
   }
   // Auth answers a wrong password and an unknown email alike (400,
@@ -69,7 +89,11 @@ function signInFailure(error: AuthError): AuthFailure {
     error.code === "invalid_credentials" ||
     (isAuthApiError(error) && error.status === 400)
   ) {
-    return { title, detail: "E-posta ya da şifre yanlış. Tekrar deneyin." };
+    return {
+      title,
+      detail: "E-posta ya da şifre yanlış. Tekrar deneyin.",
+      field: "password",
+    };
   }
   return unknownProblem(title);
 }
@@ -81,15 +105,20 @@ function signUpFailure(error: AuthError): AuthFailure {
   switch (error.code) {
     case "user_already_exists":
     case "email_exists":
+      return existingAccount;
+    case "weak_password":
       return {
         title,
-        detail: "Bu e-posta ile zaten bir hesap var. Giriş yapmayı deneyin.",
+        detail: "Şifre en az 6 karakter olmalı.",
+        field: "password",
       };
-    case "weak_password":
-      return { title, detail: "Şifre en az 6 karakter olmalı." };
     case "email_address_invalid":
     case "validation_failed":
-      return { title, detail: "E-posta adresini kontrol edin." };
+      return {
+        title,
+        detail: "E-posta adresini kontrol edin.",
+        field: "email",
+      };
     default:
       return unknownProblem(title);
   }
@@ -105,7 +134,8 @@ export async function signIn(
   password: string,
 ): Promise<SignInResult> {
   const trimmed = email.trim();
-  if (!trimmed || !password) return { ok: false, failure: missingFields };
+  const missing = missingField(trimmed, password);
+  if (missing) return { ok: false, failure: missing };
   try {
     const { error } = await auth.signInWithPassword({
       email: trimmed,
@@ -127,20 +157,38 @@ export async function signUp(
   password: string,
 ): Promise<SignUpResult> {
   const trimmed = email.trim();
-  if (!trimmed || !password) return { ok: false, failure: missingFields };
+  const missing = missingField(trimmed, password);
+  if (missing) return { ok: false, failure: missing };
   try {
     const { data, error } = await auth.signUp({ email: trimmed, password });
     if (error) return { ok: false, failure: signUpFailure(error) };
+    // With confirmations on, Auth hides an existing email: it answers a
+    // user without identities and no session, and sends no email.
+    if (data.user && data.user.identities?.length === 0) {
+      return { ok: false, failure: existingAccount };
+    }
     return { ok: true, signedIn: data.session !== null };
   } catch {
     return { ok: false, failure: noConnection };
   }
 }
 
+export type SignOutResult = { ok: true } | { ok: false; failure: AuthFailure };
+
 /**
  * Signs out on this device. Auth removes the stored session even when the
- * server cannot be reached, so the device is signed out either way.
+ * server cannot be reached; it keeps it only when it cannot read it, and
+ * then this says so.
  */
-export async function signOut(auth: Auth): Promise<void> {
-  await auth.signOut({ scope: "local" });
+export async function signOut(auth: Auth): Promise<SignOutResult> {
+  const failure: AuthFailure = {
+    title: "Çıkış yapılamadı.",
+    detail: "Biraz sonra tekrar deneyin.",
+  };
+  try {
+    const { error } = await auth.signOut({ scope: "local" });
+    return error ? { ok: false, failure } : { ok: true };
+  } catch {
+    return { ok: false, failure };
+  }
 }

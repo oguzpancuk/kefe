@@ -22,7 +22,8 @@ export default function SignIn() {
     setBusy(false);
     if (result.ok) return; // The layout moves on once the session exists.
     setFailure(result.failure);
-    setPassword("");
+    // A wrong password is typed again; a lost connection keeps it.
+    if (result.failure.field === "password") setPassword("");
   }
 
   return (
@@ -49,6 +50,7 @@ export default function SignIn() {
         label="E-posta"
         value={email}
         onChangeText={setEmail}
+        invalid={failure?.field === "email"}
         placeholder="E-posta adresinizi yazın"
         keyboardType="email-address"
         autoComplete="email"
@@ -60,7 +62,7 @@ export default function SignIn() {
         value={password}
         onChangeText={setPassword}
         secret
-        invalid={failure !== null}
+        invalid={failure?.field === "password"}
         placeholder="Şifrenizi yazın"
         autoComplete="current-password"
         textContentType="password"
