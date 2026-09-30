@@ -39,7 +39,7 @@ async function itemsOf(owner: User, id: string): Promise<Row[]> {
     stack,
     owner,
     "GET",
-    `receipt_items?receipt_id=eq.${id}&order=created_at,id`,
+    `receipt_items?receipt_id=eq.${id}&order=line_no`,
   );
   return rows as Row[];
 }
@@ -76,10 +76,12 @@ describe("a valid mock result", () => {
     });
   });
 
-  it("stores the mock's items in integer kuruş", async () => {
+  it("stores the mock's items in integer kuruş, in printed order", async () => {
     const items = await itemsOf(a, id);
-    expect(items.map((item) => item.amount_kurus).sort()).toEqual([
-      1250, 3490, 3900,
+    expect(items.map((item) => [item.line_no, item.amount_kurus])).toEqual([
+      [1, 1250],
+      [2, 3490],
+      [3, 3900],
     ]);
     for (const item of items) {
       expect(typeof item.raw_text).toBe("string");
