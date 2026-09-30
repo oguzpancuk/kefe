@@ -74,6 +74,13 @@
 - `evaluator-qa`: NEEDS_WORK on the first pass ("Göster" clipped at
   320 px and 200 % text; tabs without `aria-selected` on the web), PASS
   after the fix. Screenshots in `docs/screenshots/skeleton-step-4/`.
+- Review findings fixed (tests seen red first, 9 of 18): with email
+  confirmation on, Auth answers a repeat sign-up with a user without
+  identities and no session, which read as a new account; failures now
+  name their field so only that input turns red; a failed sign-out shows
+  a message instead of a stuck button. Pitfall: the local stack has
+  confirmations off, so the repeat-sign-up case exists only in hosted
+  Supabase.
 - Pitfall: `CI=1 npx expo start --web` does not watch files; restart it
   (with `--clear`) after edits or the old bundle is served.
 - Open: iOS keeps the session in memory only (no localStorage); step 6
