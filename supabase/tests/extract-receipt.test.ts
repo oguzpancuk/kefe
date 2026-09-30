@@ -1,5 +1,6 @@
 import { randomUUID } from "node:crypto";
 import { beforeAll, describe, expect, it } from "vitest";
+import { istanbulDate } from "../../packages/core/src/index.ts";
 import { invoke, rest, signUp, type User } from "./api";
 import { localStack, type LocalStack } from "./local-stack";
 
@@ -74,7 +75,8 @@ describe("a valid mock result", () => {
       source: "mock",
       error_code: null,
       store_name: "Örnek Market",
-      purchased_on: "2026-09-29",
+      // The mock dates its sample today, Turkey time.
+      purchased_on: istanbulDate(new Date()),
       total_kurus: 8640,
     });
   });

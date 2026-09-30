@@ -4,6 +4,7 @@ import {
   formatMonth,
   formatTl,
   formatTlAmount,
+  istanbulDate,
   istanbulMonth,
   monthTotal,
   sumKurus,
@@ -92,6 +93,13 @@ describe("istanbulMonth", () => {
     expect(istanbulMonth(new Date("2026-09-30T20:59:00Z"))).toBe("2026-09");
     expect(istanbulMonth(new Date("2026-09-30T21:00:00Z"))).toBe("2026-10");
     expect(istanbulMonth(new Date("2026-12-31T21:00:00Z"))).toBe("2027-01");
+  });
+});
+
+describe("istanbulDate", () => {
+  it("reads the calendar day in Turkey time (UTC+3)", () => {
+    expect(istanbulDate(new Date("2026-09-30T20:59:00Z"))).toBe("2026-09-30");
+    expect(istanbulDate(new Date("2026-09-30T21:00:00Z"))).toBe("2026-10-01");
   });
 });
 

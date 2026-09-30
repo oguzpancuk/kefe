@@ -17,6 +17,7 @@ export {
   formatMonth,
   formatTl,
   formatTlAmount,
+  istanbulDate,
   istanbulMonth,
   monthTotal,
   sumKurus,

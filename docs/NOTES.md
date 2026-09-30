@@ -73,6 +73,11 @@
   row; direct `status = 'saved'` without `saved_at` refused). Web flow
   driven with Playwright against an in-memory fake of the Supabase HTTP
   APIs; screenshots in `docs/screenshots/skeleton-step-5/`.
+- `evaluator-qa` NEEDS_WORK on the first pass: the mock dated its sample
+  2026-09-29, so from 1 October a saved sample landed in September and Ana
+  Sayfa showed "Fiş kaydedildi." over 0,00 TL. The mock now dates it today
+  (Turkey time, `istanbulDate` in core) and the tests use the current
+  month; checked with the browser and fake clocked to 1 October.
 - Decision to revisit in v1 1: the saved total is the sum of the checked
   items, not the printed total. With the mock they agree; when the total
   becomes its own editable field (mismatch warning), `save_receipt` must

@@ -1,6 +1,7 @@
 import { randomUUID } from "node:crypto";
 import { beforeAll, describe, expect, it } from "vitest";
 import {
+  istanbulMonth,
   monthTotal,
   type MonthTotal,
   type ReceiptForTotal,
@@ -19,8 +20,9 @@ let b: User;
 
 type Row = Record<string, unknown>;
 
-// The mock's receipt is dated 2026-09-29 (extract-receipt/adapter.ts).
-const MONTH = "2026-09";
+// The mock dates its receipt today, Turkey time (extract-receipt/adapter.ts),
+// and Ana Sayfa shows the current month: the same month here.
+const MONTH = istanbulMonth(new Date());
 const MOCK_TOTAL = 8640;
 
 type Draft = { id: string; key: string; items: Row[] };

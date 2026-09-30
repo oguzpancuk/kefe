@@ -27,9 +27,16 @@ const DATE = /^(\d{4})-(0[1-9]|1[0-2])-(0[1-9]|[12]\d|3[01])$/;
 // Turkey keeps UTC+3 all year (no daylight saving since 2016).
 const ISTANBUL_OFFSET_MS = 3 * 60 * 60 * 1000;
 
+/** The calendar day `now` falls on, in Turkey time ("YYYY-MM-DD"). */
+export function istanbulDate(now: Date): string {
+  return new Date(now.getTime() + ISTANBUL_OFFSET_MS)
+    .toISOString()
+    .slice(0, 10);
+}
+
 /** The month `now` falls in, in Turkey time. */
 export function istanbulMonth(now: Date): Month {
-  return new Date(now.getTime() + ISTANBUL_OFFSET_MS).toISOString().slice(0, 7);
+  return istanbulDate(now).slice(0, 7);
 }
 
 /**

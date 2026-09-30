@@ -5,6 +5,8 @@
  * Output is `unknown` on purpose: nothing an adapter returns is trusted
  * until `parseExtraction` from @kefe/core accepts it.
  */
+import { istanbulDate } from "../../../packages/core/src/index.ts";
+
 export type ExtractionSource = "mock" | "ai";
 
 /** Which canned answer the mock gives; only honoured in mock mode. */
@@ -23,10 +25,10 @@ export type ExtractionAdapter = {
 
 // A plausible market receipt. The draft is stored with source 'mock', so
 // the app can say "Örnek veri — fişiniz okunmadı" instead of passing this
-// off as the person's receipt.
+// off as the person's receipt. Dated today (Turkey time) when read, so a
+// saved sample lands in the month Ana Sayfa shows.
 const SAMPLE = {
   store: "Örnek Market",
-  date: "2026-09-29",
   total_kurus: 8640,
   items: [
     { raw_text: "EKMEK 1 AD 12,50", name: "Ekmek", amount_kurus: 1250 },
@@ -51,7 +53,10 @@ const MALFORMED = {
 export const mockAdapter: ExtractionAdapter = {
   source: "mock",
   extract({ mockScenario }) {
-    const output = mockScenario === "invalid" ? MALFORMED : SAMPLE;
+    const output =
+      mockScenario === "invalid"
+        ? MALFORMED
+        : { ...SAMPLE, date: istanbulDate(new Date()) };
     return Promise.resolve(structuredClone(output));
   },
 };
