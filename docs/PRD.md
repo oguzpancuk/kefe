@@ -67,21 +67,32 @@ take the photo → check → save.
    unsupported file type, oversized or unreadable image is rejected with a
    plain message and "Tekrar fotoğraf çek", before anything is saved.
 
-4. **Processing status and retry.** The receipt moves through visible
-   states: yükleniyor, sırada, işleniyor, kontrol bekliyor, kaydedildi,
-   başarısız — shown in plain words ("Fiş okunuyor"). — works when: a
-   forced processing failure shows a plain Turkish message and a
-   "Tekrar dene" action; retrying, or re-sending after the network drops
-   mid-upload, ends in exactly one receipt, never two.
+4. **Processing status and retry.** Processing is not a page of its own:
+   after sending, the person lands on the check screen, which shows a
+   waiting state with the single phrase "Fiş okunuyor" until the draft
+   is ready. The system states (yükleniyor, sırada, işleniyor, kontrol
+   bekliyor, kaydedildi, başarısız) are internal and never shown by
+   name. — works when: between sending and the draft, the only text the
+   person sees is "Fiş okunuyor" (no "sırada", "işleniyor" or other
+   state name anywhere in the UI); the flow stays three steps (photo →
+   check → save) with no extra page; a forced processing failure shows a
+   plain Turkish message and a "Tekrar dene" action; retrying, or
+   re-sending after the network drops mid-upload, ends in exactly one
+   receipt, never two.
 
 5. **Check and correct the draft.** The check screen shows store, date,
    total and the item list. Fields the AI was unsure of carry a visible
-   "Kontrol et" label (text, not colour alone). Tapping an item edits
-   name, brand, quantity, package size, number of packages, category and
-   amount. Unreadable brand or package size stays empty, never guessed.
-   The raw receipt line is kept next to the edited values. — works when:
+   "Kontrol et" label (text, not colour alone). Tapping an item opens its
+   edit view showing only name and amount first; brand, package size,
+   number of packages and category sit under a closed "Diğer bilgiler"
+   section that opens on tap (the data model keeps all fields). If one of
+   those hidden fields carries "Kontrol et", the section shows that label
+   while closed. Unreadable brand or package size stays empty, never
+   guessed. The raw receipt line is kept next to the edited values. —
+   works when: the edit view opens with only name and amount visible;
    every listed field can be changed and the change survives save and
-   reopen; a receipt whose items do not add up to its total shows the
+   reopen; an unsure hidden field is flagged on the closed "Diğer
+   bilgiler"; a receipt whose items do not add up to its total shows the
    difference in kuruş on the check screen; an item with no readable
    brand shows an empty brand field, not an invented one; the person can
    save without confirming each field one by one.
@@ -123,9 +134,13 @@ take the photo → check → save.
 10. **Account screen and delete account.** Hesabım shows account info, a
     plain privacy/data-use explanation (including that receipt images are
     sent to an AI provider, and what the team does with the data), the
-    commercial-analysis consent choice, sign out and delete account. —
-    works when: the privacy text is readable in the app without leaving
-    it; commercial-analysis consent is off unless the person turns it on,
+    commercial-analysis consent choice, sign out and delete account. The
+    consent is labelled in plain words, never "ticari analiz izni";
+    placeholder wording until the owner fixes it (open question 12):
+    "Verilerim isimsiz fiyat araştırmalarında kullanılabilir". — works
+    when: the privacy text is readable in the app without leaving it; no
+    screen shows the words "ticari analiz"; commercial-analysis consent
+    is off unless the person turns it on,
     and the app works fully with it off; after deleting the account the
     person cannot sign in, and none of their receipts, items, price
     observations or stored images remain.
@@ -243,3 +258,7 @@ take the photo → check → save.
 10. **Deadline and budget** for the MVP, and for hosted costs (Supabase,
     AI calls).
 11. **Legal:** who reviews KVKK / privacy text before production?
+12. **Consent wording:** the final plain-Turkish label for the
+    commercial-analysis consent. Placeholder in PRD #10: "Verilerim
+    isimsiz fiyat araştırmalarında kullanılabilir". Decide together with
+    question 11 (the wording must stay true to what the data is used for).

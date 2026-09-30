@@ -61,8 +61,9 @@ Auth → private Storage → Edge Function (mock AI, Zod) → Postgres with RLS
 
 5. [ ] **Fiş ekle → Kontrol et → Kaydet on the web, into the month
        total.** "Fiş ekle" on Ana Sayfa opens a gallery/file picker,
-       uploads to private storage, calls `extract-receipt`, shows the
-       draft (store, date, total, items) with a visible "Örnek veri —
+       uploads to private storage, calls `extract-receipt`, lands on
+       Kontrol et showing only "Fiş okunuyor" while waiting (no separate
+       processing page), then the draft (store, date, total, items) with a visible "Örnek veri —
        fişiniz okunmadı" label; one item amount is editable; "Kaydet"
        calls an idempotent `save_receipt` (idempotency key per draft);
        Ana Sayfa shows the month's total of saved receipts, formatted by
@@ -90,10 +91,16 @@ from the deferred default carries its reason.
        point. All item fields (name, brand, quantity, package size,
        package count, category, amount), "Kontrol et" on uncertain fields,
        raw line kept, empty brand/size stays empty, total-vs-items
-       difference. — done when: `test` (core: mismatch computed in kuruş,
-       missing brand stays `null`, Turkish decimals) + `screenshot` (a
-       mismatching sample shows the difference; an unsure field shows the
-       text label). Failure: a guessed brand, or a mismatch hidden.
+       difference. The item edit view shows name and amount first; the
+       other fields sit under a closed "Diğer bilgiler" that shows
+       "Kontrol et" when a hidden field is unsure. — done when: `test`
+       (core: mismatch computed in kuruş, missing brand stays `null`,
+       Turkish decimals) + `screenshot` (a mismatching sample shows the
+       difference; an unsure field shows the text label; the edit view
+       opens with only name and amount; an unsure brand flags the closed
+       "Diğer bilgiler"). Failure: a guessed brand, a mismatch hidden, all
+       seven fields open at once, or an unsure field hidden without a
+       flag.
 
 2. [ ] **Processing states, retry and duplicate warning** (PRD #4,
        #6) — why v1: without it a failed read strands the person, and the
@@ -105,7 +112,9 @@ from the deferred default carries its reason.
        and deletes nothing — + `screenshot` of the Turkish failure message
        with "Tekrar dene" and of the duplicate warning. Failure: two
        receipts after a retry, a silent duplicate, or an automatic
-       delete.
+       delete. Also `screenshot`: between send and draft the UI shows
+       only "Fiş okunuyor" — no internal state name ("sırada",
+       "işleniyor") appears on any screen.
 
 3. [ ] **Home complete** (PRD #2) — why v1: it is the first screen. Month
        selector, last three purchases, plain category summary (six
@@ -155,11 +164,15 @@ from the deferred default carries its reason.
 
 9. [ ] **Hesabım complete and delete account** (PRD #10) — why v1:
        required before any real user. Account info, privacy text in-app
-       (AI provider transfer named), commercial-analysis consent (off by
-       default), delete account. — done when: `test` — after account
+       (AI provider transfer named), commercial-analysis consent in plain
+       words (placeholder "Verilerim isimsiz fiyat araştırmalarında
+       kullanılabilir" until PRD open question 12; off by default),
+       delete account. — done when: `test` — after account
        deletion no receipt, item, observation or storage object of that
        user remains and sign-in fails + `screenshot` (privacy text,
-       consent off by default). Failure: any leftover row or object.
+       consent off by default, the words "ticari analiz" nowhere on
+       screen). Failure: any leftover row or object, or jargon in the
+       consent label.
 
 10. [ ] **Camera path on iOS** (PRD #3) — why v1: most receipts are
         photographed. Camera or gallery choice, "Fişin tamamı görünsün.",

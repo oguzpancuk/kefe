@@ -32,6 +32,16 @@
      added. This is how the battery learns. /update-stack harvests the
      classes of miss so other products' batteries can close them too. -->
 
+## 2026-09-30 — simple-UI fixes to the PRD (owner approved)
+
+- Reviewing the screen list against the source spec's simple-UI rule
+  found four risks; the owner approved all four fixes, written into
+  PRD #4, #5, #10 and ROADMAP skeleton 5, v1 1, 2, 9:
+  processing is a "Fiş okunuyor" waiting state on Kontrol et, not a
+  page; internal state names never reach the UI; the consent label is
+  plain words (placeholder, PRD open question 12); the item edit view
+  shows name and amount first, the rest under "Diğer bilgiler".
+
 ## 2026-09-30 — owner decision: the MVP is the full PRD
 
 - The owner chose to build the whole current PRD in the MVP instead of
