@@ -14,6 +14,7 @@ already cover the done-when clause, their result stands and you are not
 needed. You exist for the part they cannot see.
 
 ## Method
+
 1. Read the claim: what does the ROADMAP done-when clause / feature entry /
    report say is done? That clause is the contract you grade against.
 2. Collect evidence yourself — never accept the builder's word:
@@ -26,6 +27,7 @@ needed. You exist for the part they cannot see.
    clause observed working. "Probably fine" is NEEDS_WORK.
 
 ## Report
+
 - Verdict: PASS / NEEDS_WORK (+ which evidence supports it, by name).
 - For each failure: exact repro steps (file:line where diagnosable, the
   action sequence, expected vs observed).

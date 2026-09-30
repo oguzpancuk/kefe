@@ -1,0 +1,16 @@
+{
+  "expo": {
+    "name": "kefe",
+    "slug": "kefe",
+    "scheme": "kefe",
+    "version": "0.0.0",
+    "orientation": "portrait",
+    "userInterfaceStyle": "light",
+    "platforms": ["ios", "web"],
+    "web": {
+      "bundler": "metro",
+      "output": "single"
+    },
+    "plugins": ["expo-router", "expo-status-bar"]
+  }
+}

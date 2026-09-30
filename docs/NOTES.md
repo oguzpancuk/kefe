@@ -24,6 +24,14 @@
   project-instructions) · fail `prettier --check` as
   shipped (no blank line after the HTML comments under each heading), so
   the battery's format step would fail on an untouched product.
+- 2026-09-30 · verify.sh · a workspace with no `test` script shows
+  `ok tests (<name>)` through `--if-present`, which reads as tests passing
+  when none ran. Print NOT PRESENT (or FAIL for workspaces that must have
+  tests) instead of `ok`.
+- 2026-09-30 · CLAUDE.md · Expo in an npm workspaces monorepo needs root
+  `overrides` pinning react, react-dom and react-native to the SDK's
+  versions, or npm hoists a second React Native and the web export fails
+  with `ERR_PACKAGE_PATH_NOT_EXPORTED ... rn-get-polyfills`.
 
 ## Battery gaps
 
@@ -31,6 +39,26 @@
      passed: date · done-when clause · what the battery missed · the test
      added. This is how the battery learns. /update-stack harvests the
      classes of miss so other products' batteries can close them too. -->
+
+## 2026-09-30 — walking skeleton step 1: monorepo boots
+
+- Workspaces `@kefe/core`, `@kefe/mobile` (Expo 57 + Expo Router, one
+  placeholder screen), `@kefe/admin` (Vite + React empty shell),
+  `@kefe/supabase` (`supabase init` config, CLI 2.117.0 pinned to match
+  CI, one smoke test that the local stack answers Auth health).
+  `docs/adr/0002-stack.md` written; template docs formatted by Prettier.
+- `parseTlAmount` in `@kefe/core`: Turkish lira text to integer kuruş,
+  throws `InvalidTlAmountError` on anything else (never 0). Its test was
+  seen red first against a stub returning 0 (21 of 21 failing).
+- Verified: `bash .claude/hooks/verify.sh` exits 0 on a clean HEAD in a
+  cloud thread, with `tests (@kefe/supabase)` NOT RUN (no Docker); CI's
+  `verify` job is the first run of that suite and of the smoke test.
+- Pitfall: root `overrides` pin react / react-dom / react-native to the
+  Expo SDK's versions (see ADR-0002). Expo's `expo install` cannot reach
+  its API from a cloud thread; `EXPO_OFFLINE=1` makes it use the SDK's
+  bundled version list.
+- Open: workspaces without tests show `ok` in the battery (upstream
+  candidate above). Next ROADMAP item: skeleton step 2.
 
 ## 2026-09-30 — simple-UI fixes to the PRD (owner approved)
 
