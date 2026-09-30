@@ -35,12 +35,15 @@ async function receiptOf(owner: User, id: string): Promise<Row | undefined> {
 }
 
 async function itemsOf(owner: User, id: string): Promise<Row[]> {
-  const { rows } = await rest(
+  // A refused read would also give no rows; make it fail instead, so "no
+  // items" below cannot pass on a broken query.
+  const { status, rows } = await rest(
     stack,
     owner,
     "GET",
     `receipt_items?receipt_id=eq.${id}&order=line_no`,
   );
+  if (status !== 200) throw new Error(`reading items: HTTP ${status}`);
   return rows as Row[];
 }
 

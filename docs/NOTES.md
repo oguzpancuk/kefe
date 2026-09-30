@@ -69,6 +69,14 @@
   `packages/core`, `supabase/package.json` and
   `functions/extract-receipt/deno.json`: bump all three together. The
   root `zod` is Expo's 3.x, which is why `@kefe/supabase` needs its own.
+- Review finding fixed: items inserted in one statement share `created_at`
+  (`now()` is the transaction's start), so reading them back fell to
+  random ids and shuffled the paper's order. `receipt_items.line_no` now
+  holds the printed position; readers order by it. Test seen red in CI
+  before the column existed. Pitfall: numbering
+  `jsonb_to_recordset` rows needs
+  `rows from (jsonb_to_recordset(...) as (cols)) with ordinality`; a
+  column list directly after `with ordinality` is an error.
 - Open: owners can call the two write functions directly, as they can
   already update receipts (step 2's open point); step 5's `save_receipt`
   and the real adapter (v1 11) should decide what only the server writes.

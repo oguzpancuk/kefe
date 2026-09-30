@@ -3,8 +3,8 @@
 -- a real AI adapter exists); a failed extraction carries an error code.
 -- The two functions write a receipt and its items in one transaction, as
 -- the caller (security invoker), so RLS decides whose receipt they touch.
--- Reversible by dropping the two functions, the constraints and the four
--- columns.
+-- Reversible by dropping the two functions, the constraints, the index
+-- and the five columns.
 
 alter table public.receipts
   add column store_name text,
@@ -19,6 +19,14 @@ alter table public.receipts
     check (status <> 'needs_review' or source is not null),
   add constraint receipts_failure_has_code
     check (status <> 'failed' or error_code is not null);
+
+-- Position of the line on the paper (1 = first), so a discount line stays
+-- next to the item it applies to. Null for an item a person adds by hand.
+alter table public.receipt_items
+  add column line_no integer
+    constraint receipt_items_line_no_positive check (line_no > 0);
+create unique index receipt_items_receipt_line_idx
+  on public.receipt_items (receipt_id, line_no);
 
 -- Replaces whatever a previous extraction left: the receipt becomes a
 -- draft (`needs_review`) with exactly `p_items`. A saved receipt, or one
@@ -45,10 +53,14 @@ begin
     raise exception 'receipt not found or already saved' using errcode = 'P0002';
   end if;
   delete from public.receipt_items where receipt_id = p_receipt_id;
-  insert into public.receipt_items (receipt_id, raw_text, name, amount_kurus)
-  select p_receipt_id, item.raw_text, item.name, item.amount_kurus
-    from jsonb_to_recordset(p_items)
-      as item(raw_text text, name text, amount_kurus bigint);
+  -- `p_items` is in printed order; `with ordinality` numbers it from 1.
+  insert into public.receipt_items
+    (receipt_id, line_no, raw_text, name, amount_kurus)
+  select p_receipt_id, item.line_no, item.raw_text, item.name, item.amount_kurus
+    from rows from (
+           jsonb_to_recordset(p_items)
+             as (raw_text text, name text, amount_kurus bigint)
+         ) with ordinality as item(raw_text, name, amount_kurus, line_no);
 end;
 $$;
 
