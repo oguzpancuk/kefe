@@ -28,6 +28,42 @@ const EXTENSIONS: Record<string, string> = {
   "image/webp": "webp",
 };
 
+/** The picked photo as the image picker describes it. */
+export type PickedImage = {
+  uri: string;
+  mimeType?: string | null;
+  fileName?: string | null;
+};
+
+const TYPE_ALIASES: Record<string, string> = { "image/jpg": "image/jpeg" };
+
+const TYPE_OF_EXTENSION: Record<string, string> = {
+  jpg: "image/jpeg",
+  jpeg: "image/jpeg",
+  png: "image/png",
+  heic: "image/heic",
+  webp: "image/webp",
+};
+
+function typeOfName(name: string | null | undefined): string | undefined {
+  const extension = name?.split(/[?#]/)[0]?.split(".").pop()?.toLowerCase();
+  return extension ? TYPE_OF_EXTENSION[extension] : undefined;
+}
+
+/**
+ * The photo's type for Storage. The picker's own type when it names a
+ * photo; else the file name's or the address's extension (iOS may leave
+ * the type out); else whatever the picker said, which `prepareReceipt`
+ * then refuses.
+ */
+export function imageTypeOf(image: PickedImage): string | null {
+  const given = image.mimeType
+    ? (TYPE_ALIASES[image.mimeType] ?? image.mimeType)
+    : undefined;
+  if (given && EXTENSIONS[given]) return given;
+  return typeOfName(image.fileName) ?? typeOfName(image.uri) ?? given ?? null;
+}
+
 /** What a new receipt will be called before anything is sent. */
 export type PreparedReceipt = {
   id: string;

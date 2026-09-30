@@ -1,12 +1,16 @@
 import { formatTl, istanbulMonth, type MonthTotal } from "@kefe/core";
 import { randomUUID } from "expo-crypto";
-import { launchImageLibraryAsync } from "expo-image-picker";
+import {
+  launchImageLibraryAsync,
+  UIImagePickerPreferredAssetRepresentationMode,
+} from "expo-image-picker";
 import { router, useFocusEffect } from "expo-router";
 import { useCallback, useState } from "react";
 import { StyleSheet, Text, View } from "react-native";
 import { useAuth } from "../../src/auth/AuthProvider";
 import { takeSavedNotice, trackSending } from "../../src/receipts/pending";
 import {
+  imageTypeOf,
   loadMonthTotal,
   prepareReceipt,
   sendReceipt,
@@ -61,12 +65,15 @@ export default function Home() {
     const picked = await launchImageLibraryAsync({
       mediaTypes: ["images"],
       quality: 0.8,
+      // iOS: hand over a JPEG rather than the library's HEIC original.
+      preferredAssetRepresentationMode:
+        UIImagePickerPreferredAssetRepresentationMode.Compatible,
     });
     const asset = picked.canceled ? undefined : picked.assets[0];
     if (!asset) return;
     const prepared = prepareReceipt(
       auth.session.user.id,
-      asset.mimeType,
+      imageTypeOf(asset),
       randomUUID,
     );
     if (!prepared.ok) {

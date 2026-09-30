@@ -9,7 +9,13 @@ import {
 } from "@kefe/core";
 import { router, useLocalSearchParams } from "expo-router";
 import { useEffect, useState } from "react";
-import { StyleSheet, Text, View } from "react-native";
+import {
+  KeyboardAvoidingView,
+  Platform,
+  StyleSheet,
+  Text,
+  View,
+} from "react-native";
 import { noteSaved, sendingOf } from "../../src/receipts/pending";
 import {
   loadDraft,
@@ -263,8 +269,13 @@ function EditItem({
     }
   }
 
+  // iOS: the number pad has no return key and covers the bottom of the
+  // screen, so "Tamam" rises above it.
   return (
-    <View style={styles.page}>
+    <KeyboardAvoidingView
+      style={styles.page}
+      behavior={Platform.OS === "ios" ? "padding" : undefined}
+    >
       <Screen>
         <BackButton to="Kontrol et" onPress={onBack} />
         <Title>Kalemi düzelt</Title>
@@ -298,7 +309,7 @@ function EditItem({
       <Footer>
         <Button label="Tamam" onPress={done} />
       </Footer>
-    </View>
+    </KeyboardAvoidingView>
   );
 }
 

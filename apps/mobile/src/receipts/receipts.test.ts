@@ -1,6 +1,7 @@
 import { describe, expect, it, vi } from "vitest";
 import { createKefeClient } from "../supabase/client";
 import {
+  imageTypeOf,
   loadDraft,
   loadMonthTotal,
   prepareReceipt,
@@ -109,6 +110,49 @@ describe("prepareReceipt", () => {
         detail: "Fişin fotoğrafını seçin (JPEG, PNG, HEIC ya da WebP).",
       },
     });
+  });
+});
+
+describe("imageTypeOf", () => {
+  it("takes the picker's type when it names a photo", () => {
+    expect(
+      imageTypeOf({ uri: "file:///tmp/a.png", mimeType: "image/png" }),
+    ).toBe("image/png");
+  });
+
+  it("reads the file name when iOS gives no type", () => {
+    expect(
+      imageTypeOf({
+        uri: "file:///var/mobile/ImagePicker/5F1C.JPG",
+        fileName: "IMG_0001.JPG",
+      }),
+    ).toBe("image/jpeg");
+  });
+
+  it("reads the address when there is neither type nor name", () => {
+    expect(
+      imageTypeOf({ uri: "file:///var/mobile/ImagePicker/5F1C.heic" }),
+    ).toBe("image/heic");
+  });
+
+  it("names a JPEG image/jpeg whatever the picker called it", () => {
+    expect(
+      imageTypeOf({ uri: "file:///tmp/a.jpeg", mimeType: "image/jpg" }),
+    ).toBe("image/jpeg");
+  });
+
+  it("keeps a type that is not a photo, so the receipt is refused", () => {
+    const type = imageTypeOf({
+      uri: "file:///tmp/fatura.pdf",
+      mimeType: "application/pdf",
+      fileName: "fatura.pdf",
+    });
+    expect(type).toBe("application/pdf");
+    expect(prepareReceipt(USER, type, () => RECEIPT).ok).toBe(false);
+  });
+
+  it("gives null when nothing tells the type", () => {
+    expect(imageTypeOf({ uri: "file:///tmp/receipt" })).toBeNull();
   });
 });
 

@@ -47,6 +47,36 @@
   browser, and the battery has no browser step. Screens with an input
   beside a button should be driven at 320 px until it has one.
 
+## 2026-09-30 — walking skeleton step 6: the same flow on iOS (code)
+
+- iOS keeps the Auth session in the keychain: `keychainStorage` in
+  `apps/mobile/src/supabase/keychain.ts` over `expo-secure-store` (new
+  dependency, Expo's own module, SDK version ~57.0.4). A value is split
+  into pieces of at most 2000 UTF-8 bytes (the store documents 2048 a
+  value; a hosted session is often more), the count written after the
+  pieces; a missing piece reads as signed out. `AppState` starts and
+  stops token refresh on iOS. The web keeps localStorage.
+- Picker: `imageTypeOf` takes the type from the file name or address
+  when iOS gives none, and `image/jpg` as `image/jpeg`; the picker asks
+  iOS for a JPEG (`preferredAssetRepresentationMode: compatible`)
+  rather than HEIC, which the future AI provider may not read.
+- "Kalemi düzelt": iOS's number pad has no return key and covered
+  "Tamam"; the page now avoids the keyboard, and every `Screen` scrolls
+  fields out from under it (`automaticallyAdjustKeyboardInsets`).
+- Red runs: `keychain.test.ts` 4 of 7 failing against a memory-only
+  stub (what iOS had) and 6 of 7 against a one-value-per-key keychain
+  stub; `imageTypeOf` 3 of 6 failing against a stub trusting `mimeType`.
+- Verified here: tests, typecheck, lint, `expo export --platform ios`
+  bundles (Hermes). Not verifiable from a cloud thread: the simulator run
+  itself, which is the owner's manual check (steps in the PR and in
+  `apps/mobile/README.md`).
+- Open (v1): the iOS number pad shows the region's decimal key, so on a
+  phone set to a non-Turkish region only "." can be typed and core
+  refuses "12.50"; decide whether core accepts a lone "." with one or two
+  decimals. iOS release path (bundle id, EAS or Xcode Cloud) is still the
+  owner's TODO; the check runs in Expo Go.
+- Next ROADMAP item after the owner's check: v1 1.
+
 ## 2026-09-30 — walking skeleton step 5: Fiş ekle → Kontrol et → Kaydet on web
 
 - Migration `20260930100000_save_receipt.sql`: `saved_at` on receipts, a
