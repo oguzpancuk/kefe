@@ -1,4 +1,13 @@
-import type { SupabaseClient } from "@supabase/supabase-js";
+import {
+  isAuthApiError,
+  isAuthRetryableFetchError,
+  type AuthError,
+  type SupabaseClient,
+} from "@supabase/supabase-js";
+
+// Email + password through Supabase Auth: the placeholder sign-in until PRD
+// open question 2 picks the method. Screens call only these two functions,
+// so swapping the method changes this file, not the screens.
 
 type Auth = SupabaseClient["auth"];
 
@@ -7,24 +16,131 @@ export type AuthFailure = { title: string; detail: string };
 
 export type SignInResult = { ok: true } | { ok: false; failure: AuthFailure };
 
-// Stub: the tests below are written against this first and must fail.
-export async function signIn(
-  _auth: Auth,
-  _email: string,
-  _password: string,
-): Promise<SignInResult> {
-  return { ok: true };
+export type SignUpResult =
+  { ok: true; signedIn: boolean } | { ok: false; failure: AuthFailure };
+
+const missingFields: AuthFailure = {
+  title: "Bilgiler eksik.",
+  detail: "E-posta adresinizi ve şifrenizi yazın.",
+};
+
+const noConnection: AuthFailure = {
+  title: "Bağlantı kurulamadı.",
+  detail: "İnternet bağlantınızı kontrol edip tekrar deneyin.",
+};
+
+const tooManyAttempts: AuthFailure = {
+  title: "Çok fazla deneme yapıldı.",
+  detail: "Birkaç dakika bekleyip tekrar deneyin.",
+};
+
+const unknownProblem = (title: string): AuthFailure => ({
+  title,
+  detail: "Bir sorun oluştu. Biraz sonra tekrar deneyin.",
+});
+
+/** Failures every Auth call shares; `null` when the error is call-specific. */
+function commonFailure(error: AuthError): AuthFailure | null {
+  if (isAuthRetryableFetchError(error)) return noConnection;
+  if (
+    error.status === 429 ||
+    error.code === "over_request_rate_limit" ||
+    error.code === "over_email_send_rate_limit"
+  ) {
+    return tooManyAttempts;
+  }
+  return null;
 }
 
-export type SignUpResult =
-  | { ok: true; signedIn: boolean }
-  | { ok: false; failure: AuthFailure };
+function signInFailure(error: AuthError): AuthFailure {
+  const common = commonFailure(error);
+  if (common) return common;
+  const title = "Giriş yapılamadı.";
+  if (error.code === "email_not_confirmed") {
+    return {
+      title,
+      detail:
+        "Önce e-postanıza gelen bağlantıya tıklayın, sonra tekrar deneyin.",
+    };
+  }
+  // Auth answers a wrong password and an unknown email alike (400,
+  // invalid_credentials), and so does this message: it never says which.
+  if (
+    error.code === "invalid_credentials" ||
+    (isAuthApiError(error) && error.status === 400)
+  ) {
+    return { title, detail: "E-posta ya da şifre yanlış. Tekrar deneyin." };
+  }
+  return unknownProblem(title);
+}
 
-// Stub: the tests below are written against this first and must fail.
+function signUpFailure(error: AuthError): AuthFailure {
+  const common = commonFailure(error);
+  if (common) return common;
+  const title = "Hesap açılamadı.";
+  switch (error.code) {
+    case "user_already_exists":
+    case "email_exists":
+      return {
+        title,
+        detail: "Bu e-posta ile zaten bir hesap var. Giriş yapmayı deneyin.",
+      };
+    case "weak_password":
+      return { title, detail: "Şifre en az 6 karakter olmalı." };
+    case "email_address_invalid":
+    case "validation_failed":
+      return { title, detail: "E-posta adresini kontrol edin." };
+    default:
+      return unknownProblem(title);
+  }
+}
+
+/**
+ * Signs in. On any failure Auth stores nothing, so no session exists
+ * afterwards; on success Auth stores the session and notifies listeners.
+ */
+export async function signIn(
+  auth: Auth,
+  email: string,
+  password: string,
+): Promise<SignInResult> {
+  const trimmed = email.trim();
+  if (!trimmed || !password) return { ok: false, failure: missingFields };
+  try {
+    const { error } = await auth.signInWithPassword({
+      email: trimmed,
+      password,
+    });
+    return error ? { ok: false, failure: signInFailure(error) } : { ok: true };
+  } catch {
+    return { ok: false, failure: noConnection };
+  }
+}
+
+/**
+ * Creates an account. `signedIn` is false when the project asks for email
+ * confirmation first: then Auth answers without a session.
+ */
 export async function signUp(
-  _auth: Auth,
-  _email: string,
-  _password: string,
+  auth: Auth,
+  email: string,
+  password: string,
 ): Promise<SignUpResult> {
-  return { ok: true, signedIn: true };
+  const trimmed = email.trim();
+  if (!trimmed || !password) return { ok: false, failure: missingFields };
+  try {
+    const { data, error } = await auth.signUp({ email: trimmed, password });
+    if (error) return { ok: false, failure: signUpFailure(error) };
+    return { ok: true, signedIn: data.session !== null };
+  } catch {
+    return { ok: false, failure: noConnection };
+  }
+}
+
+/**
+ * Signs out on this device. Auth removes the stored session even when the
+ * server cannot be reached, so the device is signed out either way.
+ */
+export async function signOut(auth: Auth): Promise<void> {
+  await auth.signOut({ scope: "local" });
 }

@@ -40,6 +40,37 @@
      added. This is how the battery learns. /update-stack harvests the
      classes of miss so other products' batteries can close them too. -->
 
+## 2026-09-30 — walking skeleton step 4: sign in and the three sections (web)
+
+- `apps/mobile`: email + password sign-in and sign-up through Supabase
+  Auth (`src/auth/auth.ts`, the swappable placeholder for PRD open
+  question 2), Turkish messages for every Auth failure, and the three
+  sections Ana Sayfa / Geçmiş / Hesabım behind a guard: `app/(app)` sends
+  a signed-out visit to `/giris`, `app/(auth)` sends a signed-in one to
+  `/`. Hesabım shows the email and "Çıkış yap". First screens built from
+  `docs/design`: theme in `src/ui/theme.ts`, Atkinson Hyperlegible Next
+  through `expo-font`, icons through `react-native-svg`.
+- New dependencies in `@kefe/mobile`: `@supabase/supabase-js`,
+  `expo-font`, `react-native-svg`, and `zod` pinned to core's 4.6.5 (bump
+  all four together now).
+- Tests: `src/auth/auth.test.ts` drives the real supabase-js client over
+  a fake fetch and in-memory storage; seen red first against a stub that
+  always succeeded (12 of 12 failing). `src/ui/theme.test.ts` fails when
+  the theme drifts from `docs/design/tokens.json` (seen red with one
+  colour changed).
+- Verified: Expo web driven with Playwright, Auth faked at the network
+  edge (GoTrue's 400 `invalid_credentials` for a wrong password):
+  signed-out `/`, `/gecmis`, `/hesabim` land on `/giris`; a wrong password
+  shows the Turkish alert and leaves no `sb-*-auth-token` in
+  localStorage, also after a reload; the right one stores it and the
+  three tabs render; sign-out clears it.
+- Pitfall: `CI=1 npx expo start --web` does not watch files; restart it
+  (with `--clear`) after edits or the old bundle is served.
+- Open: iOS keeps the session in memory only (no localStorage); step 6
+  must add a persistent store. "Şifremi unuttum" (design 02) is not built:
+  forgot-password is undrawn and has no ROADMAP item yet.
+- Next ROADMAP item: skeleton step 5.
+
 ## 2026-09-30 — walking skeleton step 3: mock extraction Edge Function
 
 - `@kefe/core` gains `parseExtraction` and the Zod `extractedReceiptSchema`
