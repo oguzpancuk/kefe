@@ -384,6 +384,13 @@ deno_version = 2
 # [edge_runtime.secrets]
 # secret_key = "env(SECRET_VALUE)"
 
+# Walking skeleton 3. Mock mode only: no provider key exists yet. When one
+# does, it goes in Edge Function secrets, never in this file.
+[functions.extract-receipt]
+enabled = true
+verify_jwt = true
+import_map = "./functions/extract-receipt/deno.json"
+
 [analytics]
 enabled = true
 port = 54327
