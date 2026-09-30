@@ -51,14 +51,25 @@
 - `supabase/tests/ownership.test.ts` signs up two users through Auth and
   drives REST and Storage with the anon key only. Seen red in CI's run of
   the first commit (tables and bucket, no policies): 7 of 13 failing, B and
-  anon reading A's rows, A refused in their own folder.
+  anon reading A's rows, A refused in their own folder. The cases the
+  review asked for (items update/delete/move, image overwrite/delete) were
+  seen red against deliberately loosened policies before restoring them.
 - Verified: migration and policies applied to a scratch Postgres 16 with
   stubbed `auth`/`storage` schemas and exercised as `authenticated`/`anon`;
   `verify.sh` locally with the Supabase suite NOT RUN; CI's `verify` is the
   real run.
 - Open: owners can still update `status` and totals directly; step 5's
   `save_receipt` should decide which columns only the server writes. No
-  `updated_at` yet. Next ROADMAP item: skeleton step 3.
+  `updated_at` yet.
+- Open: deleting a receipt (or an account, through the `auth.users`
+  cascade) removes rows but leaves the image in the bucket. The
+  delete-receipt and delete-account items (v1 5 and 9) must remove the
+  storage objects themselves.
+- Learned from the review: through PostgREST every write carries
+  RETURNING, so the SELECT policy also guards updates and deletes; and
+  Storage's upsert/replace also need the INSERT policy. A test only goes
+  red for a loose write policy when those are loose too.
+- Next ROADMAP item: skeleton step 3.
 
 ## 2026-09-30 — visual design from the logo
 
