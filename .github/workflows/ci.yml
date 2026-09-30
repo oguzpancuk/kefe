@@ -1,0 +1,42 @@
+# CI runs the SAME battery agents run locally: .claude/hooks/verify.sh.
+# One source of truth for "green" — if this file and verify.sh disagree,
+# verify.sh wins and this file is wrong.
+#
+# Written at instantiation, before the walking skeleton exists, so the
+# steps that need the skeleton are conditional on its files: until the
+# first skeleton pull request lands, verify.sh itself reports
+# "FAIL skeleton" — red by design, never green on nothing.
+name: ci
+on:
+  push:
+    branches: [main]
+  pull_request:
+
+jobs:
+  verify:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+      - if: hashFiles('package-lock.json') != ''
+        run: npm ci
+      # The @kefe/supabase suite (RLS, ownership, deletion) runs against a
+      # real local stack. A missing stack is a FAIL in verify.sh, never a
+      # skip, so CI starts one as soon as the project has a Supabase config.
+      # Services no test touches may be excluded; edge-runtime must boot
+      # because tests call /functions/v1/*, and mailpit must run if an
+      # auth test reads a sign-up code from it.
+      - if: hashFiles('supabase/config.toml') != ''
+        uses: supabase/setup-cli@v1
+        with:
+          version: 2.117.0 # keep in step with the supabase CLI devDependency
+      - if: hashFiles('supabase/config.toml') != ''
+        run: supabase start -x studio,imgproxy,logflare,vector
+      - run: bash .claude/hooks/verify.sh
+      - if: always() && hashFiles('supabase/config.toml') != ''
+        run: supabase stop
+  # No macOS job: the iOS app is Expo with continuous native generation,
+  # so no native project is checked in and nothing is macOS-only to
+  # verify. The native binary is built at release time only.
