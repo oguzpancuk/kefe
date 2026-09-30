@@ -60,6 +60,12 @@
   when iOS gives none, and `image/jpg` as `image/jpeg`; the picker asks
   iOS for a JPEG (`preferredAssetRepresentationMode: compatible`)
   rather than HEIC, which the future AI provider may not read.
+- Review fix: `imageTypeOf` reads the uploaded file's extension (`uri`)
+  first, since on iOS `fileName` names the HEIC original of a JPEG; new
+  cases seen red first (2 of 22 failing against the old order).
+- Kept as is (review, optional): a keychain write is not all-or-nothing;
+  a kill between pieces and count signs the person out, nothing else. A
+  generation-numbered write would close it if it ever matters.
 - "Kalemi düzelt": iOS's number pad has no return key and covered
   "Tamam"; the page now avoids the keyboard, and every `Screen` scrolls
   fields out from under it (`automaticallyAdjustKeyboardInsets`).

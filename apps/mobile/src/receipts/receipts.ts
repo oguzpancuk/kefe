@@ -51,17 +51,23 @@ function typeOfName(name: string | null | undefined): string | undefined {
 }
 
 /**
- * The photo's type for Storage. The picker's own type when it names a
- * photo; else the file name's or the address's extension (iOS may leave
- * the type out); else whatever the picker said, which `prepareReceipt`
- * then refuses.
+ * The photo's type for Storage. The extension of the file that is
+ * uploaded (`uri`) first: on iOS the picker converts to JPEG, while
+ * `fileName` (and possibly `mimeType`) may still name the library's HEIC
+ * original. Then the picker's type when it names a photo, then the file
+ * name; else whatever the picker said, which `prepareReceipt` refuses.
  */
 export function imageTypeOf(image: PickedImage): string | null {
   const given = image.mimeType
     ? (TYPE_ALIASES[image.mimeType] ?? image.mimeType)
     : undefined;
-  if (given && EXTENSIONS[given]) return given;
-  return typeOfName(image.fileName) ?? typeOfName(image.uri) ?? given ?? null;
+  return (
+    typeOfName(image.uri) ??
+    (given && EXTENSIONS[given] ? given : undefined) ??
+    typeOfName(image.fileName) ??
+    given ??
+    null
+  );
 }
 
 /** What a new receipt will be called before anything is sent. */

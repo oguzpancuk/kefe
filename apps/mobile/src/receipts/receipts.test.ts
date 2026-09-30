@@ -129,6 +129,34 @@ describe("imageTypeOf", () => {
     ).toBe("image/jpeg");
   });
 
+  it("reads the uploaded file, not the library's original name", () => {
+    expect(
+      imageTypeOf({
+        uri: "file:///var/mobile/ImagePicker/5F1C.jpg",
+        fileName: "IMG_0001.HEIC",
+      }),
+    ).toBe("image/jpeg");
+  });
+
+  it("trusts the uploaded file over a type it no longer has", () => {
+    expect(
+      imageTypeOf({
+        uri: "file:///var/mobile/ImagePicker/5F1C.jpg",
+        mimeType: "image/heic",
+        fileName: "IMG_0001.HEIC",
+      }),
+    ).toBe("image/jpeg");
+  });
+
+  it("reads the name when the address has no extension", () => {
+    expect(
+      imageTypeOf({
+        uri: "blob:http://localhost:8081/5f1c",
+        fileName: "a.png",
+      }),
+    ).toBe("image/png");
+  });
+
   it("reads the address when there is neither type nor name", () => {
     expect(
       imageTypeOf({ uri: "file:///var/mobile/ImagePicker/5F1C.heic" }),
