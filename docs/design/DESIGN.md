@@ -18,8 +18,8 @@ below serves "no learning needed":
 1. **One obvious next step per screen.** One primary (filled blue) button;
    everything else is outlined or a text link. "Fiş ekle" is the only
    hero button (72 pt) in the app.
-2. **Big and plain.** Body 18, nothing under 16, key figures 24+, the
-   month total 40 (pending the owner, see Type). Buttons at least 56 pt
+2. **Big and plain.** Body 18, nothing under 16, key figures 18–24, the
+   month total 40 (owner decision, see Type). Buttons at least 56 pt
    tall, touch targets never under 48.
 3. **Words beside every icon.** The tab bar, back buttons and every action
    carry a visible Turkish label (PRD #12). Back buttons name where they
@@ -78,8 +78,8 @@ tabular figures. Scale in `tokens.json` → `text`; the month total is the
 only 40 pt text. Every other total and amount is 18–24, inside PRD #12's
 "key figures 18–24". The month total at 40 is outside that range: it is
 the one number the home screen exists for (PRD, User: "show me what I
-spent this month"). **Pending the owner's decision** (ADR-0003): keep it at
-40 and amend PRD #12 to allow one hero figure, or set it to 24.
+spent this month"). The owner decided on 2026-09-30 to keep it at 40,
+and PRD #12 now names it as the one exception (ADR-0003).
 
 The receipt's raw line ("Fişte yazan") and admin error codes use the
 system monospace.

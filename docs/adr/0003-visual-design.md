@@ -30,10 +30,9 @@ users, often 40+ (PRD, User), and PRD #12 sets hard accessibility floors.
 - Sizes: body 18, minimum 16; buttons at least 56 tall, "Fiş ekle" at
   least 72, touch targets ≥ 48. All heights are minimums so controls grow
   with large text instead of clipping.
-- **Open, for the owner:** the home screen's month total is 40, outside
-  PRD #12's "key figures 18–24"; every other figure is within it.
-  Recommended: keep 40 and amend PRD #12 to allow this one hero figure.
-  If declined, the month total becomes 24.
+- **Month total at 40** (owner decision, 2026-09-30): the home screen's
+  month total is the one figure outside PRD #12's "key figures 18–24";
+  PRD #12 names it as the exception. Every other figure stays 18–24.
 
 ## Consequences
 
