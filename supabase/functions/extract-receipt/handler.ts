@@ -153,21 +153,23 @@ export function createHandler({
     if (!receipt) return refuse(404, "receipt_not_found");
     if (receipt.status === "saved") return refuse(409, "receipt_already_saved");
 
-    // RED STUB (replaced in the next commit): stores whatever the adapter
-    // returns, unvalidated, and does not mark it as mock.
-    const output = (await adapter.extract({
-      imagePath: receipt.image_path,
-      mockScenario: mock ?? "valid",
-    })) as ExtractedReceipt;
-    const result = { ok: true, receipt: output } as
+    let result:
       | { ok: true; receipt: ExtractedReceipt }
       | { ok: false; errorCode: ExtractionErrorCode };
-    const source = "ai";
-    void parseExtraction;
+    try {
+      const output = await adapter.extract({
+        imagePath: receipt.image_path,
+        mockScenario: mock ?? "valid",
+      });
+      result = parseExtraction(output);
+    } catch {
+      result = { ok: false, errorCode: "extraction_failed" };
+    }
+
     const write = result.ok
       ? await rpc("record_extraction", {
           p_receipt_id: receiptId,
-          p_source: source,
+          p_source: adapter.source,
           p_store_name: result.receipt.store,
           p_purchased_on: result.receipt.date,
           p_total_kurus: result.receipt.total_kurus,
@@ -175,7 +177,7 @@ export function createHandler({
         })
       : await rpc("record_extraction_failure", {
           p_receipt_id: receiptId,
-          p_source: source,
+          p_source: adapter.source,
           p_error_code: result.errorCode,
         });
     if (!write.ok) {
@@ -191,12 +193,12 @@ export function createHandler({
       ? {
           receipt_id: receiptId,
           status: "needs_review",
-          source,
+          source: adapter.source,
         }
       : {
           receipt_id: receiptId,
           status: "failed",
-          source,
+          source: adapter.source,
           error_code: result.errorCode,
         };
     if (!result.ok) {
