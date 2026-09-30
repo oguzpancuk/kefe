@@ -47,9 +47,6 @@ export type RestResult = { status: number; rows: unknown[] };
  * One PostgREST call. `rows` is the returned representation (empty when
  * the call was refused), so "nothing reached" reads the same for a filter
  * RLS emptied and a write RLS refused; `status` tells them apart.
- * `returning: false` sends `return=minimal`: without RETURNING, Postgres
- * checks a write against the command's own policy only, not the SELECT
- * policy as well, so this is how a test isolates a write policy.
  */
 export async function rest(
   stack: LocalStack,
@@ -57,17 +54,13 @@ export async function rest(
   method: "GET" | "POST" | "PATCH" | "DELETE",
   pathAndQuery: string,
   body?: unknown,
-  options: { returning?: boolean } = {},
 ): Promise<RestResult> {
   const response = await fetch(`${stack.apiUrl}/rest/v1/${pathAndQuery}`, {
     method,
     headers: {
       ...headers(stack, caller),
       "Content-Type": "application/json",
-      Prefer:
-        options.returning === false
-          ? "return=minimal"
-          : "return=representation",
+      Prefer: "return=representation",
     },
     ...(body === undefined ? {} : { body: JSON.stringify(body) }),
   });

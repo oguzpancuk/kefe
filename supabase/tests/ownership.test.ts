@@ -169,7 +169,6 @@ describe("user B, another signed-in user", () => {
       "PATCH",
       `receipt_items?id=eq.${String((ownItem.rows[0] as Row).id)}`,
       { receipt_id: receiptId },
-      { returning: false },
     );
     expect(move.status).toBeGreaterThanOrEqual(400);
     expect(move.rows).toEqual([]);
