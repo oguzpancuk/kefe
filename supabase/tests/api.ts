@@ -137,3 +137,21 @@ export async function download(
     bytes: new Uint8Array(await response.arrayBuffer()),
   };
 }
+
+/** Calls an Edge Function as `caller`; `body` is the parsed JSON answer. */
+export async function invoke(
+  stack: LocalStack,
+  caller: Caller | null,
+  name: string,
+  payload: unknown,
+): Promise<{ status: number; body: unknown }> {
+  const response = await fetch(`${stack.apiUrl}/functions/v1/${name}`, {
+    method: "POST",
+    headers: { ...headers(stack, caller), "Content-Type": "application/json" },
+    body: JSON.stringify(payload),
+  });
+  return {
+    status: response.status,
+    body: await response.json().catch(() => null),
+  };
+}

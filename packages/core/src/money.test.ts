@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { InvalidTlAmountError, parseTlAmount } from "./money";
+import { InvalidTlAmountError, parseTlAmount } from "./money.ts";
 
 describe("parseTlAmount", () => {
   it('reads "12,50" as 1250 kuruş', () => {

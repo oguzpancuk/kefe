@@ -12,5 +12,8 @@
     "test": "vitest run",
     "typecheck": "tsc --noEmit -p .",
     "lint": "eslint ."
+  },
+  "dependencies": {
+    "zod": "4.6.5"
   }
 }
