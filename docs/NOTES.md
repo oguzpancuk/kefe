@@ -32,6 +32,15 @@
      added. This is how the battery learns. /update-stack harvests the
      classes of miss so other products' batteries can close them too. -->
 
+## 2026-09-30 — ROADMAP written via /mvp-scope
+
+- docs/ROADMAP.md: 6-step walking skeleton (web first, iOS simulator as
+  the owner's manual check), 14 ordered v1 items, 6 deferred items with
+  reasons. About block of docs/project-instructions.md filled from it.
+- Assumption to confirm: the skeleton signs in with email + password as
+  a swappable placeholder until PRD open question 2 is answered.
+- Verified: prettier on the edited docs only; no code yet.
+
 ## 2026-09-30 — PRD written via /spec
 
 - Turned the owner's Turkish source spec (v0.1, outside the repo) into
