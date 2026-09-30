@@ -1,6 +1,6 @@
 import { randomUUID } from "node:crypto";
 import { beforeAll, describe, expect, it } from "vitest";
-import { download, rest, signUp, upload, type User } from "./api";
+import { download, removeObject, rest, signUp, upload, type User } from "./api";
 import { localStack, type LocalStack } from "./local-stack";
 
 // ROADMAP walking skeleton 2: user B gets nothing of user A's receipts,
@@ -10,6 +10,8 @@ import { localStack, type LocalStack } from "./local-stack";
 const BUCKET = "receipts";
 // A JPEG's first bytes; storage checks the declared type, not the pixels.
 const IMAGE = new Uint8Array([0xff, 0xd8, 0xff, 0xe0, 0x00, 0x10, 0x4a, 0x46]);
+// What B tries to put in A's place: different bytes, so a swap shows.
+const FORGED = new Uint8Array([0xff, 0xd8, 0xff, 0xe0, 0x00, 0x10, 0x00, 0x00]);
 
 let stack: LocalStack;
 let a: User;
@@ -82,6 +84,7 @@ describe("user B, another signed-in user", () => {
     expect(byId.rows).toEqual([]);
 
     const all = await rest(stack, b, "GET", "receipts");
+    expect(all.status).toBe(200);
     expect(all.rows).toEqual([]);
   });
 
@@ -96,6 +99,7 @@ describe("user B, another signed-in user", () => {
     expect(byReceipt.rows).toEqual([]);
 
     const all = await rest(stack, b, "GET", "receipt_items");
+    expect(all.status).toBe(200);
     expect(all.rows).toEqual([]);
   });
 
@@ -117,6 +121,68 @@ describe("user B, another signed-in user", () => {
     expect(aItems.rows).toHaveLength(1);
   });
 
+  it("changes and deletes none of A's items", async () => {
+    const update = await rest(
+      stack,
+      b,
+      "PATCH",
+      `receipt_items?receipt_id=eq.${receiptId}`,
+      { amount_kurus: 1 },
+    );
+    expect(update.status).toBe(200);
+    expect(update.rows).toEqual([]);
+
+    const remove = await rest(
+      stack,
+      b,
+      "DELETE",
+      `receipt_items?receipt_id=eq.${receiptId}`,
+    );
+    expect(remove.status).toBe(200);
+    expect(remove.rows).toEqual([]);
+
+    const aItems = await rest(
+      stack,
+      a,
+      "GET",
+      `receipt_items?receipt_id=eq.${receiptId}`,
+    );
+    expect(aItems.rows).toHaveLength(1);
+    expect(aItems.rows[0]).toMatchObject({ amount_kurus: 1250 });
+  });
+
+  it("is refused moving their own item into A's receipt", async () => {
+    const own = await rest(stack, b, "POST", "receipts", {
+      idempotency_key: randomUUID(),
+    });
+    expect(own.rows).toHaveLength(1);
+    const ownItem = await rest(stack, b, "POST", "receipt_items", {
+      receipt_id: (own.rows[0] as Row).id,
+      raw_text: "SAHTE",
+      amount_kurus: 1,
+    });
+    expect(ownItem.rows).toHaveLength(1);
+
+    const move = await rest(
+      stack,
+      b,
+      "PATCH",
+      `receipt_items?id=eq.${String((ownItem.rows[0] as Row).id)}`,
+      { receipt_id: receiptId },
+      { returning: false },
+    );
+    expect(move.status).toBeGreaterThanOrEqual(400);
+    expect(move.rows).toEqual([]);
+
+    const aItems = await rest(
+      stack,
+      a,
+      "GET",
+      `receipt_items?receipt_id=eq.${receiptId}`,
+    );
+    expect(aItems.rows).toHaveLength(1);
+  });
+
   it("changes and deletes nothing of A's receipt", async () => {
     const update = await rest(
       stack,
@@ -125,6 +191,7 @@ describe("user B, another signed-in user", () => {
       `receipts?id=eq.${receiptId}`,
       { total_kurus: 1 },
     );
+    expect(update.status).toBe(200);
     expect(update.rows).toEqual([]);
 
     const remove = await rest(
@@ -172,18 +239,36 @@ describe("user B, another signed-in user", () => {
     );
     expect(status).toBeGreaterThanOrEqual(400);
   });
+
+  // Last in this block: if the delete policy ever leaks, A's image is gone
+  // and the image checks after it would pass on nothing.
+  it("cannot overwrite or delete A's image", async () => {
+    // Asserted on A's copy, not on B's statuses: Storage answers a write
+    // that matched nothing differently between versions.
+    await upload(stack, b, BUCKET, imagePath, FORGED, "upsert");
+    await upload(stack, b, BUCKET, imagePath, FORGED, "replace");
+    expect((await download(stack, a, BUCKET, imagePath)).bytes).toEqual(IMAGE);
+
+    await removeObject(stack, b, BUCKET, imagePath);
+    expect((await download(stack, a, BUCKET, imagePath)).bytes).toEqual(IMAGE);
+  });
 });
 
 describe("anon, not signed in", () => {
   it("selects no receipts and no items", async () => {
     const receipts = await rest(stack, null, "GET", "receipts");
+    expect(receipts.status).toBe(200);
     expect(receipts.rows).toEqual([]);
     const items = await rest(stack, null, "GET", "receipt_items");
+    expect(items.status).toBe(200);
     expect(items.rows).toEqual([]);
   });
 
   it("is refused creating a receipt", async () => {
+    // Claims A explicitly: without it the null `auth.uid()` default would
+    // be refused by NOT NULL before RLS is even asked.
     const insert = await rest(stack, null, "POST", "receipts", {
+      user_id: a.id,
       idempotency_key: randomUUID(),
     });
     expect(insert.status).toBeGreaterThanOrEqual(400);

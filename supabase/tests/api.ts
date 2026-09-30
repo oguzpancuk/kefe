@@ -47,6 +47,9 @@ export type RestResult = { status: number; rows: unknown[] };
  * One PostgREST call. `rows` is the returned representation (empty when
  * the call was refused), so "nothing reached" reads the same for a filter
  * RLS emptied and a write RLS refused; `status` tells them apart.
+ * `returning: false` sends `return=minimal`: without RETURNING, Postgres
+ * checks a write against the command's own policy only, not the SELECT
+ * policy as well, so this is how a test isolates a write policy.
  */
 export async function rest(
   stack: LocalStack,
@@ -54,13 +57,17 @@ export async function rest(
   method: "GET" | "POST" | "PATCH" | "DELETE",
   pathAndQuery: string,
   body?: unknown,
+  options: { returning?: boolean } = {},
 ): Promise<RestResult> {
   const response = await fetch(`${stack.apiUrl}/rest/v1/${pathAndQuery}`, {
     method,
     headers: {
       ...headers(stack, caller),
       "Content-Type": "application/json",
-      Prefer: "return=representation",
+      Prefer:
+        options.returning === false
+          ? "return=minimal"
+          : "return=representation",
     },
     ...(body === undefined ? {} : { body: JSON.stringify(body) }),
   });
@@ -71,21 +78,45 @@ export async function rest(
   };
 }
 
-/** Uploads bytes to a storage path; returns the HTTP status. */
+/**
+ * Writes bytes to a storage path; returns the HTTP status. `mode` picks
+ * the call: a plain upload, an upload that may overwrite (`x-upsert`),
+ * or the replace endpoint (PUT).
+ */
 export async function upload(
   stack: LocalStack,
   caller: Caller | null,
   bucket: string,
   path: string,
   bytes: Uint8Array,
+  mode: "create" | "upsert" | "replace" = "create",
 ): Promise<number> {
   const response = await fetch(
     `${stack.apiUrl}/storage/v1/object/${bucket}/${path}`,
     {
-      method: "POST",
-      headers: { ...headers(stack, caller), "Content-Type": "image/jpeg" },
+      method: mode === "replace" ? "PUT" : "POST",
+      headers: {
+        ...headers(stack, caller),
+        "Content-Type": "image/jpeg",
+        ...(mode === "upsert" ? { "x-upsert": "true" } : {}),
+      },
       body: bytes,
     },
+  );
+  await response.body?.cancel();
+  return response.status;
+}
+
+/** Deletes an object; returns the HTTP status. */
+export async function removeObject(
+  stack: LocalStack,
+  caller: Caller | null,
+  bucket: string,
+  path: string,
+): Promise<number> {
+  const response = await fetch(
+    `${stack.apiUrl}/storage/v1/object/${bucket}/${path}`,
+    { method: "DELETE", headers: headers(stack, caller) },
   );
   await response.body?.cancel();
   return response.status;
