@@ -19,7 +19,8 @@ below serves "no learning needed":
    everything else is outlined or a text link. "Fiş ekle" is the only
    hero button (72 pt) in the app.
 2. **Big and plain.** Body 18, nothing under 16, key figures 24+, the
-   month total 40. Buttons 56 pt tall, touch targets never under 48.
+   month total 40 (pending the owner, see Type). Buttons at least 56 pt
+   tall, touch targets never under 48.
 3. **Words beside every icon.** The tab bar, back buttons and every action
    carry a visible Turkish label (PRD #12). Back buttons name where they
    go ("Geçmiş", "Kontrol et"), not just "Geri".
@@ -74,34 +75,39 @@ apart by their written name and amount, never by colour.
 600, 700 and 800. It was drawn for low-vision readers: `ı l 1 I` and
 `0 O` are distinct, and it covers every Turkish letter. Amounts use
 tabular figures. Scale in `tokens.json` → `text`; the month total is the
-only 40 pt text. The PRD's "key figures 18–24" is read as a floor: totals
-and amounts are 18–26, the month total 40.
+only 40 pt text. Every other total and amount is 18–24, inside PRD #12's
+"key figures 18–24". The month total at 40 is outside that range: it is
+the one number the home screen exists for (PRD, User: "show me what I
+spent this month"). **Pending the owner's decision** (ADR-0003): keep it at
+40 and amend PRD #12 to allow one hero figure, or set it to 24.
 
 The receipt's raw line ("Fişte yazan") and admin error codes use the
 system monospace.
 
-Dynamic Type / browser zoom: sizes are the default; layouts use no fixed
-heights for text, so at 200% text rows grow and wrap (ROADMAP v1 12).
+Dynamic Type / browser zoom: sizes are the default; every height in this
+file and in `tokens.json` → `minHeight` is a minimum, never a fixed
+height, so at 200% text labels wrap and controls grow instead of clipping
+(PRD #12, ROADMAP v1 12).
 
 ## Components
 
-| Component     | Spec                                                                                                                          |
-| ------------- | ----------------------------------------------------------------------------------------------------------------------------- |
-| Button        | 56 tall, radius 14, 19/700. Primary filled blue; secondary white with 2 px blue border; danger white with 2 px red border.    |
-| Hero button   | "Fiş ekle" only: 72 tall, radius 18, 22/700, plus icon 30.                                                                    |
-| Text button   | Blue 18/700, 48 tall hit area (Vazgeç, Tümü, Şifremi unuttum).                                                                |
-| Back button   | Chevron + the name of the screen it returns to, 18/700 blue, top-left.                                                        |
-| Input         | 56 tall, radius 12, 1.5 px `borderStrong`, 19 text, label above in 16/700. Error: 2 px red border + red alert box above.      |
-| Card          | White, 1 px `border`, radius 16, padding 16.                                                                                  |
-| List row      | ≥ 64 tall; title 18/700, subtitle 16 muted, amount 18/700 right-aligned, chevron. Whole row is the tap target.                |
-| Month picker  | 56 tall card: ‹ previous · "Eylül 2026" · next ›, both arrows labelled for screen readers ("Önceki ay", "Sonraki ay").        |
-| Tab bar       | 88 tall, three tabs with 28 icon + 16 label; active tab blue 800 with a 4 px top bar. Ana Sayfa · Geçmiş · Hesabım.           |
-| "Kontrol et"  | Amber pill: triangle icon + "Kontrol et", 16/700. Sits under the item name or beside a field label.                           |
-| Sample banner | "Örnek veri — fişiniz okunmadı": dashed `borderStrong` box on `surfaceMuted`, flask icon. Top of every screen with mock data. |
-| Alert         | Icon + bold first sentence + plain second sentence; amber for "check this", red for errors.                                   |
-| Bottom sheet  | Radius 24 top, grab handle, scrim `rgba(37,33,31,.55)`. Used for "Fiş ekle".                                                  |
-| Dialog        | Centered card radius 20, icon circle, title 22/700, safe action primary.                                                      |
-| Switch        | 60×36; off = grey with "Kapalı" written under it, on = blue with "Açık".                                                      |
+| Component     | Spec                                                                                                                           |
+| ------------- | ------------------------------------------------------------------------------------------------------------------------------ |
+| Button        | min 56 tall, radius 14, 19/700. Primary filled blue; secondary white with 2 px blue border; danger white with 2 px red border. |
+| Hero button   | "Fiş ekle" only: min 72 tall, radius 18, 22/700, plus icon 30.                                                                 |
+| Text button   | Blue 18/700, 48 tall hit area (Vazgeç, Tümü, Şifremi unuttum).                                                                 |
+| Back button   | Chevron + the name of the screen it returns to, 18/700 blue, top-left.                                                         |
+| Input         | min 56 tall, radius 12, 1.5 px `borderStrong`, 19 text, label above in 16/700. Error: 2 px red border + red alert box above.   |
+| Card          | White, 1 px `border`, radius 16, padding 16.                                                                                   |
+| List row      | ≥ 64 tall; title 18/700, subtitle 16 muted, amount 18/700 right-aligned, chevron. Whole row is the tap target.                 |
+| Month picker  | min 56 tall card: ‹ previous · "Eylül 2026" · next ›, both arrows labelled for screen readers ("Önceki ay", "Sonraki ay").     |
+| Tab bar       | min 88 tall, three tabs with 28 icon + 16 label; active tab blue 800 with a 4 px top bar. Ana Sayfa · Geçmiş · Hesabım.        |
+| "Kontrol et"  | Amber pill: triangle icon + "Kontrol et", 16/700. Sits under the item name or beside a field label.                            |
+| Sample banner | "Örnek veri — fişiniz okunmadı": dashed `borderStrong` box on `surfaceMuted`, flask icon. Top of every screen with mock data.  |
+| Alert         | Icon + bold first sentence + plain second sentence; amber for "check this", red for errors.                                    |
+| Bottom sheet  | Radius 24 top, grab handle, scrim `rgba(37,33,31,.55)`. Used for "Fiş ekle".                                                   |
+| Dialog        | Centered card radius 20, icon circle, title 22/700, safe action primary.                                                       |
+| Switch        | 60×36; off = grey with "Kapalı" written under it, on = blue with "Açık".                                                       |
 
 Icons: 24 px line icons, 2 px stroke, rounded ends (the canvas uses
 inline SVG; the build may use any set with the same weight, as long as
