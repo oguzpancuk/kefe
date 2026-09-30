@@ -40,6 +40,38 @@
      added. This is how the battery learns. /update-stack harvests the
      classes of miss so other products' batteries can close them too. -->
 
+## 2026-09-30 — walking skeleton step 3: mock extraction Edge Function
+
+- `@kefe/core` gains `parseExtraction` and the Zod `extractedReceiptSchema`
+  (store, ISO date, total and item amounts as integer kuruş, raw line per
+  item, unknowns `null`). Its test was seen red first against a stub that
+  accepted everything (13 of 17 new cases failing).
+- Migration `20260930090000_extraction.sql`: `store_name`, `purchased_on`,
+  `source` ('mock' | 'ai') and `error_code` on `receipts`, checks that a
+  draft has a source and a failure a code, and two `security invoker`
+  functions, `record_extraction` and `record_extraction_failure`, that
+  write the receipt and replace its items in one transaction under RLS.
+- `supabase/functions/extract-receipt`: Deno entry `index.ts`, the logic in
+  `handler.ts` (no Deno APIs, so the workspace's `tsc` checks it), the
+  adapter seam and the mock in `adapter.ts`. Every call runs as the caller
+  (anon key + the user's token); no service key. The anon key is refused
+  by role (it is also a valid token). `{ mock: "invalid" }` makes the mock
+  answer malformed output, only while the mock is the adapter.
+- Verified: migrations and functions on a scratch Postgres 16 with stubbed
+  `auth`/`storage`; the handler against a fake fetch; `verify.sh` locally
+  with the Supabase suite NOT RUN. CI's `verify` runs
+  `tests/extract-receipt.test.ts`; its red run is the first commit's stub.
+- Pitfalls: the function imports core by relative path with `.ts`
+  extensions (Deno needs them; `allowImportingTsExtensions` is on in the
+  base tsconfig). `zod` is pinned to the same exact version in
+  `packages/core`, `supabase/package.json` and
+  `functions/extract-receipt/deno.json`: bump all three together. The
+  root `zod` is Expo's 3.x, which is why `@kefe/supabase` needs its own.
+- Open: owners can call the two write functions directly, as they can
+  already update receipts (step 2's open point); step 5's `save_receipt`
+  and the real adapter (v1 11) should decide what only the server writes.
+- Next ROADMAP item: skeleton step 4.
+
 ## 2026-09-30 — walking skeleton step 2: schema, RLS, private storage
 
 - Migration `20260930080000_receipts.sql`: `receipts` (status, total
