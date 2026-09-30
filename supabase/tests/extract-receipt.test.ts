@@ -56,10 +56,15 @@ beforeAll(async () => {
 describe("a valid mock result", () => {
   let id: string;
   let answer: { status: number; body: unknown };
+  // The mock dates its sample today, Turkey time, by its own clock: the
+  // days before and after the call bound it, even across midnight.
+  let daysAround: string[];
 
   beforeAll(async () => {
     id = await newReceipt(a);
+    const before = istanbulDate(new Date());
     answer = await invoke(stack, a, "extract-receipt", { receipt_id: id });
+    daysAround = [before, istanbulDate(new Date())];
   });
 
   it("answers with a draft marked mock", () => {
@@ -70,15 +75,15 @@ describe("a valid mock result", () => {
   });
 
   it("stores a needs_review draft with source 'mock' and no error", async () => {
-    expect(await receiptOf(a, id)).toMatchObject({
+    const receipt = await receiptOf(a, id);
+    expect(receipt).toMatchObject({
       status: "needs_review",
       source: "mock",
       error_code: null,
       store_name: "Örnek Market",
-      // The mock dates its sample today, Turkey time.
-      purchased_on: istanbulDate(new Date()),
       total_kurus: 8640,
     });
+    expect(daysAround).toContain(receipt?.purchased_on);
   });
 
   it("stores the mock's items in integer kuruş, in printed order", async () => {

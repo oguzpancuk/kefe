@@ -85,8 +85,14 @@
 - Open: owners can still PATCH `status`/`total_kurus`/`saved_at` directly
   through PostgREST (their own rows only); a column-level grant or a
   trigger should make `save_receipt` the only way to `saved`.
-- Open: the month total reads every saved receipt of the person and core
-  picks the month; v1 3 (month picker) should filter by month in the query.
+- Review findings fixed: the month total query now asks for the month
+  only (printed date in the month, or no date and `saved_at` in it, Turkey
+  time, `monthRange` in core) and reads page by page past PostgREST's
+  1000-row cap; "Fiş kaydedildi." shows once (kept in memory, not in the
+  address, so a reload or a tab switch does not repeat it); the Supabase
+  tests take the date and month from the stored draft, so a run across
+  midnight in Turkey compares like with like. New app and core tests seen
+  red first.
 - Open: a web reload on Kontrol et while the receipt is still being sent
   loses the in-memory send; the page then shows "Fiş okunamadı." (retry
   is v1 2).

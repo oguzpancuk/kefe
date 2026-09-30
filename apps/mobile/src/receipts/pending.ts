@@ -18,3 +18,18 @@ export function trackSending(receiptId: string, send: Sending): void {
 export function sendingOf(receiptId: string): Sending | undefined {
   return sending.get(receiptId);
 }
+
+// "Fiş kaydedildi." for Ana Sayfa, shown once after Kaydet. Kept here,
+// not in the address, so a reload or a tab switch does not repeat it.
+let savedNotice = false;
+
+export function noteSaved(): void {
+  savedNotice = true;
+}
+
+/** True once after `noteSaved`, then false until the next save. */
+export function takeSavedNotice(): boolean {
+  const taken = savedNotice;
+  savedNotice = false;
+  return taken;
+}

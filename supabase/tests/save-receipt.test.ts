@@ -2,7 +2,9 @@ import { randomUUID } from "node:crypto";
 import { beforeAll, describe, expect, it } from "vitest";
 import {
   istanbulMonth,
+  monthRange,
   monthTotal,
+  type Month,
   type MonthTotal,
   type ReceiptForTotal,
 } from "../../packages/core/src/index.ts";
@@ -20,12 +22,12 @@ let b: User;
 
 type Row = Record<string, unknown>;
 
-// The mock dates its receipt today, Turkey time (extract-receipt/adapter.ts),
-// and Ana Sayfa shows the current month: the same month here.
-const MONTH = istanbulMonth(new Date());
 const MOCK_TOTAL = 8640;
 
-type Draft = { id: string; key: string; items: Row[] };
+// `month` is the month of the draft's printed date, read back: the mock
+// dates its sample by its own clock, so a run across midnight still
+// compares like with like.
+type Draft = { id: string; key: string; items: Row[]; month: Month };
 
 /** Uploads nothing: a receipt row plus the mock extraction, as the app does. */
 async function newDraft(owner: User): Promise<Draft> {
@@ -45,7 +47,17 @@ async function newDraft(owner: User): Promise<Draft> {
   if (extracted.status !== 200) {
     throw new Error(`extraction answered HTTP ${extracted.status}`);
   }
-  return { id, key, items: await itemsOf(owner, id) };
+  const receipt = (await receiptsOf(owner)).find((row) => row.id === id);
+  const purchasedOn = receipt?.purchased_on;
+  if (typeof purchasedOn !== "string") {
+    throw new Error("the mock draft has no printed date");
+  }
+  return {
+    id,
+    key,
+    items: await itemsOf(owner, id),
+    month: purchasedOn.slice(0, 7),
+  };
 }
 
 async function itemsOf(owner: User, id: string): Promise<Row[]> {
@@ -71,9 +83,25 @@ async function receiptsOf(owner: User): Promise<Row[]> {
   return rows as Row[];
 }
 
-/** The home screen's number: the owner's rows, summed by @kefe/core. */
-async function homeTotal(owner: User): Promise<MonthTotal> {
-  return monthTotal((await receiptsOf(owner)) as ReceiptForTotal[], MONTH);
+/**
+ * The home screen's number, read the way the app reads it
+ * (apps/mobile/src/receipts/receipts.ts, loadMonthTotal): saved receipts
+ * of the month by printed date, or by `saved_at` when the date is
+ * unknown, summed by @kefe/core.
+ */
+async function homeTotal(owner: User, month: Month): Promise<MonthTotal> {
+  const range = monthRange(month);
+  const inMonth =
+    `and(purchased_on.gte.${range.firstDay},purchased_on.lt.${range.nextFirstDay}),` +
+    `and(purchased_on.is.null,saved_at.gte.${range.startsAt},saved_at.lt.${range.endsAt})`;
+  const { status, rows } = await rest(
+    stack,
+    owner,
+    "GET",
+    `receipts?select=status,total_kurus,purchased_on,saved_at&status=eq.saved&or=(${encodeURIComponent(inMonth)})`,
+  );
+  if (status !== 200) throw new Error(`reading the month: HTTP ${status}`);
+  return monthTotal(rows as ReceiptForTotal[], month);
 }
 
 const save = (caller: User, key: string, items: unknown[] = []) =>
@@ -95,7 +123,10 @@ describe("a draft", () => {
       status: "needs_review",
       total_kurus: MOCK_TOTAL,
     });
-    expect(await homeTotal(a)).toEqual({ totalKurus: 0, count: 0 });
+    expect(await homeTotal(a, draft.month)).toEqual({
+      totalKurus: 0,
+      count: 0,
+    });
   });
 });
 
@@ -130,7 +161,10 @@ describe("saving a draft with one amount corrected", () => {
   });
 
   it("moves the month total by exactly the saved total", async () => {
-    expect(await homeTotal(a)).toEqual({ totalKurus: EDITED_TOTAL, count: 1 });
+    expect(await homeTotal(a, draft.month)).toEqual({
+      totalKurus: EDITED_TOTAL,
+      count: 1,
+    });
   });
 
   it("counts it once when the same key is saved again, even with other edits", async () => {
@@ -145,7 +179,10 @@ describe("saving a draft with one amount corrected", () => {
     expect(items.map((item) => item.amount_kurus)).toEqual([1500, 3490, 3900]);
     const saved = (await receiptsOf(a)).filter((r) => r.status === "saved");
     expect(saved).toHaveLength(1);
-    expect(await homeTotal(a)).toEqual({ totalKurus: EDITED_TOTAL, count: 1 });
+    expect(await homeTotal(a, draft.month)).toEqual({
+      totalKurus: EDITED_TOTAL,
+      count: 1,
+    });
   });
 });
 
@@ -160,7 +197,7 @@ describe("two saves of one draft at the same moment", () => {
     expect(answers.map((answer) => answer.status)).toEqual([200, 200]);
     const rows = await receiptsOf(user);
     expect(rows.filter((r) => r.status === "saved")).toHaveLength(1);
-    expect(await homeTotal(user)).toEqual({
+    expect(await homeTotal(user, draft.month)).toEqual({
       totalKurus: MOCK_TOTAL,
       count: 1,
     });
@@ -180,7 +217,10 @@ describe("a save that cannot apply", () => {
     expect((await itemsOf(user, other.id))[0]).toMatchObject({
       amount_kurus: 1250,
     });
-    expect(await homeTotal(user)).toEqual({ totalKurus: 0, count: 0 });
+    expect(await homeTotal(user, draft.month)).toEqual({
+      totalKurus: 0,
+      count: 0,
+    });
   });
 
   it("refuses an amount that is not whole kuruş", async () => {
@@ -190,7 +230,10 @@ describe("a save that cannot apply", () => {
       { id: draft.items[0]?.id, amount_kurus: 12.5 },
     ]);
     expect(answer.status).toBeGreaterThanOrEqual(400);
-    expect(await homeTotal(user)).toEqual({ totalKurus: 0, count: 0 });
+    expect(await homeTotal(user, draft.month)).toEqual({
+      totalKurus: 0,
+      count: 0,
+    });
   });
 
   it("refuses a receipt whose reading failed", async () => {
@@ -208,19 +251,28 @@ describe("a save that cannot apply", () => {
     });
     const answer = await save(user, key);
     expect(answer.status).toBeGreaterThanOrEqual(400);
-    expect(await homeTotal(user)).toEqual({ totalKurus: 0, count: 0 });
+    // Nothing of this user is saved, so no month has a total.
+    const all = await receiptsOf(user);
+    expect(all.every((r) => r.status !== "saved")).toBe(true);
+    expect(await homeTotal(user, istanbulMonth(new Date()))).toEqual({
+      totalKurus: 0,
+      count: 0,
+    });
   });
 
   it("refuses B saving A's draft, and A's draft stays a draft", async () => {
     const draft = await newDraft(a);
-    const before = await homeTotal(a);
+    const before = await homeTotal(a, draft.month);
     const answer = await save(b, draft.key);
     expect(answer.status).toBeGreaterThanOrEqual(400);
     const rows = await receiptsOf(a);
     expect(rows.find((row) => row.id === draft.id)).toMatchObject({
       status: "needs_review",
     });
-    expect(await homeTotal(a)).toEqual(before);
-    expect(await homeTotal(b)).toEqual({ totalKurus: 0, count: 0 });
+    expect(await homeTotal(a, draft.month)).toEqual(before);
+    expect(await homeTotal(b, draft.month)).toEqual({
+      totalKurus: 0,
+      count: 0,
+    });
   });
 });

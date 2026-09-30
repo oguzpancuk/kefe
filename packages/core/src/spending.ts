@@ -39,6 +39,36 @@ export function istanbulMonth(now: Date): Month {
   return istanbulDate(now).slice(0, 7);
 }
 
+export type MonthRange = {
+  /** First day of the month, "YYYY-MM-DD". */
+  firstDay: string;
+  /** First day of the next month (exclusive end). */
+  nextFirstDay: string;
+  /** The month's first instant in Turkey time, as an ISO timestamp. */
+  startsAt: string;
+  /** The next month's first instant in Turkey time (exclusive end). */
+  endsAt: string;
+};
+
+/**
+ * The bounds of `month`, for asking the database for that month only:
+ * printed dates compare with the days, `saved_at` with the instants.
+ */
+export function monthRange(month: Month): MonthRange {
+  const match = MONTH.exec(month);
+  if (!match) throw new Error(`Not a month: ${JSON.stringify(month)}`);
+  const year = Number(match[1]);
+  const index = Number(match[2]) - 1;
+  const start = Date.UTC(year, index, 1) - ISTANBUL_OFFSET_MS;
+  const end = Date.UTC(year, index + 1, 1) - ISTANBUL_OFFSET_MS;
+  return {
+    firstDay: `${month}-01`,
+    nextFirstDay: istanbulDate(new Date(end)),
+    startsAt: new Date(start).toISOString(),
+    endsAt: new Date(end).toISOString(),
+  };
+}
+
 /**
  * The month a saved receipt belongs to: the printed date's, or, when the
  * date could not be read, the month it was saved in (Turkey time). The

@@ -1,4 +1,5 @@
 import {
+  monthRange,
   monthTotal,
   type Kurus,
   type Month,
@@ -244,6 +245,8 @@ export async function saveReceipt(
   }
 }
 
+const PAGE = 1000;
+
 const totalRowsSchema = z.array(
   z.object({
     status: z.string(),
@@ -262,16 +265,30 @@ export async function loadMonthTotal(
   month: Month,
 ): Promise<Result<{ total: MonthTotal }>> {
   try {
-    // why: every saved receipt, not one month's; the month picker (ROADMAP
-    // v1 3) narrows this query when it arrives.
-    const answer = await client
-      .from("receipts")
-      .select("status,total_kurus,purchased_on,saved_at")
-      .eq("status", "saved");
-    const rows = totalRowsSchema.safeParse(answer.data);
-    if (answer.error || !rows.success)
-      return { ok: false, failure: loadFailed };
-    return { ok: true, total: monthTotal(rows.data, month) };
+    // The month only: by the printed date, or, for a receipt whose date
+    // was unreadable, by when it was saved (Turkey time), as core counts it.
+    const range = monthRange(month);
+    const inMonth =
+      `and(purchased_on.gte.${range.firstDay},purchased_on.lt.${range.nextFirstDay}),` +
+      `and(purchased_on.is.null,saved_at.gte.${range.startsAt},saved_at.lt.${range.endsAt})`;
+    // PostgREST answers at most `max_rows` (1000) rows a call: read page
+    // by page in a fixed order, so no receipt of the month is left out.
+    const rows: z.infer<typeof totalRowsSchema> = [];
+    for (let from = 0; ; from += PAGE) {
+      const answer = await client
+        .from("receipts")
+        .select("status,total_kurus,purchased_on,saved_at")
+        .eq("status", "saved")
+        .or(inMonth)
+        .order("id", { ascending: true })
+        .range(from, from + PAGE - 1);
+      const page = totalRowsSchema.safeParse(answer.data);
+      if (answer.error || !page.success)
+        return { ok: false, failure: loadFailed };
+      rows.push(...page.data);
+      if (page.data.length < PAGE) break;
+    }
+    return { ok: true, total: monthTotal(rows, month) };
   } catch {
     return { ok: false, failure: loadFailed };
   }

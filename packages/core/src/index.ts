@@ -19,7 +19,13 @@ export {
   formatTlAmount,
   istanbulDate,
   istanbulMonth,
+  monthRange,
   monthTotal,
   sumKurus,
 } from "./spending.ts";
-export type { Month, MonthTotal, ReceiptForTotal } from "./spending.ts";
+export type {
+  Month,
+  MonthRange,
+  MonthTotal,
+  ReceiptForTotal,
+} from "./spending.ts";

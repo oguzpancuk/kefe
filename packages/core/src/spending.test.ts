@@ -6,6 +6,7 @@ import {
   formatTlAmount,
   istanbulDate,
   istanbulMonth,
+  monthRange,
   monthTotal,
   sumKurus,
   type ReceiptForTotal,
@@ -93,6 +94,25 @@ describe("istanbulMonth", () => {
     expect(istanbulMonth(new Date("2026-09-30T20:59:00Z"))).toBe("2026-09");
     expect(istanbulMonth(new Date("2026-09-30T21:00:00Z"))).toBe("2026-10");
     expect(istanbulMonth(new Date("2026-12-31T21:00:00Z"))).toBe("2027-01");
+  });
+});
+
+describe("monthRange", () => {
+  it("gives the month's days and its instants in Turkey time", () => {
+    expect(monthRange("2026-09")).toEqual({
+      firstDay: "2026-09-01",
+      nextFirstDay: "2026-10-01",
+      startsAt: "2026-08-31T21:00:00.000Z",
+      endsAt: "2026-09-30T21:00:00.000Z",
+    });
+    expect(monthRange("2026-12")).toMatchObject({
+      nextFirstDay: "2027-01-01",
+      endsAt: "2026-12-31T21:00:00.000Z",
+    });
+  });
+
+  it("refuses text that is not a month", () => {
+    expect(() => monthRange("2026-13")).toThrow();
   });
 });
 

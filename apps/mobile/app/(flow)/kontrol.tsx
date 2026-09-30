@@ -10,7 +10,7 @@ import {
 import { router, useLocalSearchParams } from "expo-router";
 import { useEffect, useState } from "react";
 import { StyleSheet, Text, View } from "react-native";
-import { sendingOf } from "../../src/receipts/pending";
+import { noteSaved, sendingOf } from "../../src/receipts/pending";
 import {
   loadDraft,
   saveReceipt,
@@ -137,7 +137,8 @@ export default function Check() {
       .map((item) => ({ id: item.id, amountKurus: amountOf(item) }));
     const result = await saveReceipt(client, draft.idempotencyKey, changed);
     if (result.ok) {
-      router.replace({ pathname: "/", params: { kaydedildi: "1" } });
+      noteSaved();
+      router.replace("/");
       return;
     }
     setSaving(false);

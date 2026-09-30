@@ -1,11 +1,11 @@
 import { formatTl, istanbulMonth, type MonthTotal } from "@kefe/core";
 import { randomUUID } from "expo-crypto";
 import { launchImageLibraryAsync } from "expo-image-picker";
-import { router, useFocusEffect, useLocalSearchParams } from "expo-router";
+import { router, useFocusEffect } from "expo-router";
 import { useCallback, useState } from "react";
 import { StyleSheet, Text, View } from "react-native";
 import { useAuth } from "../../src/auth/AuthProvider";
-import { trackSending } from "../../src/receipts/pending";
+import { takeSavedNotice, trackSending } from "../../src/receipts/pending";
 import {
   loadMonthTotal,
   prepareReceipt,
@@ -27,13 +27,14 @@ type TotalState =
 // categories arrive in ROADMAP v1 item 3.
 export default function Home() {
   const auth = useAuth();
-  const { kaydedildi } = useLocalSearchParams<{ kaydedildi?: string }>();
+  const [justSaved, setJustSaved] = useState(false);
   const [total, setTotal] = useState<TotalState>({ status: "loading" });
   const [pickFailure, setPickFailure] = useState<Failure | null>(null);
 
   // Read again every time Ana Sayfa comes back into view (after Kaydet).
   useFocusEffect(
     useCallback(() => {
+      if (takeSavedNotice()) setJustSaved(true);
       if (!supabase) return;
       let current = true;
       void loadMonthTotal(supabase, istanbulMonth(new Date())).then(
@@ -56,6 +57,7 @@ export default function Home() {
     const client = supabase;
     if (!client || auth.status !== "signedIn") return;
     setPickFailure(null);
+    setJustSaved(false);
     const picked = await launchImageLibraryAsync({
       mediaTypes: ["images"],
       quality: 0.8,
@@ -95,7 +97,7 @@ export default function Home() {
         <Title>Ana Sayfa</Title>
         <Mark size={56} />
       </View>
-      {kaydedildi ? (
+      {justSaved ? (
         <Alert
           tone="success"
           title="Fiş kaydedildi."

@@ -287,6 +287,37 @@ describe("loadMonthTotal", () => {
     expect(calls[0]?.url.searchParams.get("status")).toBe("eq.saved");
   });
 
+  it("asks only for the month, by printed date or else by when it was saved", async () => {
+    const { client, calls } = setup(() => json(200, []));
+    await loadMonthTotal(client, "2026-09");
+    expect(calls[0]?.url.searchParams.get("or")).toBe(
+      "(and(purchased_on.gte.2026-09-01,purchased_on.lt.2026-10-01)," +
+        "and(purchased_on.is.null,saved_at.gte.2026-08-31T21:00:00.000Z,saved_at.lt.2026-09-30T21:00:00.000Z))",
+    );
+  });
+
+  it("reads every page, so a month past the row cap is not cut short", async () => {
+    const row = {
+      status: "saved",
+      total_kurus: 100,
+      purchased_on: "2026-09-29",
+      saved_at: "2026-09-30T09:00:00+00:00",
+    };
+    const { client, calls } = setup((call) => {
+      const offset = Number(call.url.searchParams.get("offset") ?? 0);
+      return json(
+        200,
+        Array.from({ length: offset === 0 ? 1000 : 1 }, () => row),
+      );
+    });
+    expect(await loadMonthTotal(client, "2026-09")).toEqual({
+      ok: true,
+      total: { totalKurus: 100100, count: 1001 },
+    });
+    expect(calls).toHaveLength(2);
+    expect(calls[0]?.url.searchParams.get("order")).toBe("id.asc");
+  });
+
   it("shows no number when a row fails the schema", async () => {
     const { client } = setup(() =>
       json(200, [{ status: "saved", total_kurus: "88,90" }]),
