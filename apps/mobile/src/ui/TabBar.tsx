@@ -38,6 +38,7 @@ export function TabBar() {
             onPress={() => router.replace(href)}
             accessibilityRole="tab"
             accessibilityState={{ selected: active }}
+            aria-selected={active}
             accessibilityLabel={label}
             style={({ pressed }) => [styles.tab, pressed && styles.pressed]}
           >

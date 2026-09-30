@@ -283,6 +283,9 @@ const styles = StyleSheet.create({
   inputBoxInvalid: { borderColor: color.danger.fg, borderWidth: border.error },
   input: {
     flex: 1,
+    // A web <input> keeps a built-in minimum width; without this it pushes
+    // "Göster" out of the box on narrow screens and at large text.
+    minWidth: 0,
     minHeight: minHeight.input - 2 * border.error,
     paddingHorizontal: space.md,
     paddingVertical: space.sm,
