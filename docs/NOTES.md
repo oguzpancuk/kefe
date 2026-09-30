@@ -60,7 +60,9 @@
 - Verified: migrations and functions on a scratch Postgres 16 with stubbed
   `auth`/`storage`; the handler against a fake fetch; `verify.sh` locally
   with the Supabase suite NOT RUN. CI's `verify` runs
-  `tests/extract-receipt.test.ts`; its red run is the first commit's stub.
+  `tests/extract-receipt.test.ts`; seen red in CI against a stub handler
+  that stored output unvalidated and marked it `ai` (5 of 12 failing: the
+  mock marker and every invalid-output case; the refusals held).
 - Pitfalls: the function imports core by relative path with `.ts`
   extensions (Deno needs them; `allowImportingTsExtensions` is on in the
   base tsconfig). `zod` is pinned to the same exact version in
