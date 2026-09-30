@@ -1,6 +1,7 @@
+import { AuthError } from "@supabase/supabase-js";
 import { describe, expect, it, vi } from "vitest";
 import { createKefeClient, type SessionStorage } from "../supabase/client";
-import { signIn, signUp } from "./auth";
+import { signIn, signOut, signUp } from "./auth";
 
 const env = { url: "http://127.0.0.1:54321", anonKey: "anon-key" };
 
@@ -72,6 +73,7 @@ describe("signIn", () => {
       failure: {
         title: "Giriş yapılamadı.",
         detail: "E-posta ya da şifre yanlış. Tekrar deneyin.",
+        field: "password",
       },
     });
     expect(storage.keys()).toEqual([]);
@@ -105,16 +107,18 @@ describe("signIn", () => {
   it("an empty email or password asks for both and calls nothing", async () => {
     const { auth, storage, fetch } = setup(session);
 
-    for (const [email, password] of [
-      ["", "sifre"],
-      ["ayse@ornek.com", ""],
-      ["   ", "sifre"],
+    for (const [email, password, field] of [
+      ["", "sifre", "email"],
+      ["ayse@ornek.com", "", "password"],
+      ["   ", "sifre", "email"],
+      ["", "", "email"],
     ] as const) {
       expect(await signIn(auth, email, password)).toEqual({
         ok: false,
         failure: {
           title: "Bilgiler eksik.",
           detail: "E-posta adresinizi ve şifrenizi yazın.",
+          field,
         },
       });
     }
@@ -171,6 +175,7 @@ describe("signIn", () => {
         title: "Giriş yapılamadı.",
         detail:
           "Önce e-postanıza gelen bağlantıya tıklayın, sonra tekrar deneyin.",
+        field: "email",
       },
     });
   });
@@ -197,6 +202,7 @@ describe("signUp", () => {
         email: "ayse@ornek.com",
         app_metadata: {},
         user_metadata: {},
+        identities: [{ id: "i1", provider: "email" }],
         created_at: "2026-09-30T08:00:00Z",
       }),
     );
@@ -222,6 +228,34 @@ describe("signUp", () => {
       failure: {
         title: "Hesap açılamadı.",
         detail: "Bu e-posta ile zaten bir hesap var. Giriş yapmayı deneyin.",
+        field: "email",
+      },
+    });
+    expect(storage.keys()).toEqual([]);
+  });
+
+  it("a repeat sign-up with confirmations on is an existing account, not a new one", async () => {
+    // With confirmations on, Auth hides whether the email exists: it answers
+    // 200 with an obfuscated user without identities, and sends no email.
+    const { auth, storage } = setup(() =>
+      json(200, {
+        id: "00000000-0000-4000-8000-000000000003",
+        aud: "authenticated",
+        role: "authenticated",
+        email: "ayse@ornek.com",
+        app_metadata: {},
+        user_metadata: {},
+        identities: [],
+        created_at: "2026-09-30T08:00:00Z",
+      }),
+    );
+
+    expect(await signUp(auth, "ayse@ornek.com", "dogru-sifre")).toEqual({
+      ok: false,
+      failure: {
+        title: "Hesap açılamadı.",
+        detail: "Bu e-posta ile zaten bir hesap var. Giriş yapmayı deneyin.",
+        field: "email",
       },
     });
     expect(storage.keys()).toEqual([]);
@@ -242,6 +276,7 @@ describe("signUp", () => {
       failure: {
         title: "Hesap açılamadı.",
         detail: "Şifre en az 6 karakter olmalı.",
+        field: "password",
       },
     });
   });
@@ -254,8 +289,37 @@ describe("signUp", () => {
       failure: {
         title: "Bilgiler eksik.",
         detail: "E-posta adresinizi ve şifrenizi yazın.",
+        field: "email",
       },
     });
     expect(fetch).not.toHaveBeenCalled();
+  });
+});
+
+describe("signOut", () => {
+  it("signs out and removes the stored session", async () => {
+    const { auth, storage } = setup(session);
+    await signIn(auth, "ayse@ornek.com", "dogru-sifre");
+    expect(storage.keys()).toHaveLength(1);
+
+    expect(await signOut(auth)).toEqual({ ok: true });
+    expect(storage.keys()).toEqual([]);
+  });
+
+  it("a failed sign-out says so in Turkish", async () => {
+    const { auth } = setup(session);
+    // Reading the stored session fails: supabase-js returns an error and
+    // keeps the session.
+    vi.spyOn(auth, "signOut").mockResolvedValue({
+      error: new AuthError("storage unavailable"),
+    });
+
+    expect(await signOut(auth)).toEqual({
+      ok: false,
+      failure: {
+        title: "Çıkış yapılamadı.",
+        detail: "Biraz sonra tekrar deneyin.",
+      },
+    });
   });
 });
