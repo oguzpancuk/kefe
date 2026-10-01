@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { parseExtraction } from "./receipt.ts";
+import { categoryLabels, parseExtraction } from "./receipt.ts";
 
 // What an extraction adapter (mock or AI) hands back. ROADMAP walking
 // skeleton 3: output that fails this schema must never become items.
@@ -16,7 +16,7 @@ const valid = {
 describe("parseExtraction", () => {
   it("accepts a well-formed extraction and keeps kuruş as integers", () => {
     const result = parseExtraction(valid);
-    expect(result).toEqual({ ok: true, receipt: valid });
+    expect(result).toMatchObject({ ok: true, receipt: valid });
   });
 
   it("keeps unknown store, date and total as null, not a guess", () => {
@@ -79,6 +79,116 @@ describe("parseExtraction", () => {
     ["an empty store name", { ...valid, store: "  " }],
   ])("rejects %s as extraction_invalid", (_case, raw) => {
     expect(parseExtraction(raw)).toEqual({
+      ok: false,
+      errorCode: "extraction_invalid",
+    });
+  });
+});
+
+// ROADMAP v1 1: every item field (name, brand, quantity, package size,
+// package count, category, amount) with the reader's unsure marks. An
+// unreadable brand or size stays empty, never guessed.
+describe("parseExtraction, full item model", () => {
+  const full = {
+    raw_text: "B.PEYNIR TAM YAG 500G 189,00",
+    name: "Beyaz peynir",
+    brand: null,
+    quantity: null,
+    package_size: { value: "500", unit: "g" },
+    package_count: 1,
+    category: "food",
+    amount_kurus: 18900,
+    unsure: ["brand"],
+  };
+
+  it("keeps every field of an item", () => {
+    const result = parseExtraction({
+      ...valid,
+      unsure: ["date"],
+      items: [full],
+    });
+    expect(result).toEqual({
+      ok: true,
+      receipt: { ...valid, unsure: ["date"], items: [full] },
+    });
+  });
+
+  it("keeps a missing brand as null, not a guess", () => {
+    const result = parseExtraction({ ...valid, items: [full] });
+    expect(result.ok && result.receipt.items[0]?.brand).toBeNull();
+  });
+
+  it("reads a blank brand as null, not as an empty name", () => {
+    const result = parseExtraction({
+      ...valid,
+      items: [{ ...full, brand: "  " }],
+    });
+    expect(result.ok && result.receipt.items[0]?.brand).toBeNull();
+  });
+
+  it("fills fields an older reader leaves out as unknown and sure", () => {
+    const result = parseExtraction(valid);
+    expect(result.ok && result.receipt.items[0]).toEqual({
+      ...valid.items[0],
+      brand: null,
+      quantity: null,
+      package_size: null,
+      package_count: null,
+      category: null,
+      unsure: [],
+    });
+    expect(result.ok && result.receipt.unsure).toEqual([]);
+  });
+
+  it("keeps package size and number of packages apart", () => {
+    const item = {
+      ...full,
+      package_size: { value: "500", unit: "g" },
+      package_count: 2,
+    };
+    const result = parseExtraction({ ...valid, items: [item] });
+    expect(result.ok && result.receipt.items[0]).toMatchObject({
+      package_size: { value: "500", unit: "g" },
+      package_count: 2,
+    });
+  });
+
+  it("keeps a weighed quantity as a decimal string", () => {
+    const item = { ...full, quantity: { value: "1.24", unit: "kg" } };
+    const result = parseExtraction({ ...valid, items: [item] });
+    expect(result.ok && result.receipt.items[0]?.quantity).toEqual({
+      value: "1.24",
+      unit: "kg",
+    });
+  });
+
+  it("names the six starting categories in Turkish", () => {
+    expect(Object.values(categoryLabels)).toEqual([
+      "Gıda",
+      "Temizlik",
+      "Kişisel Bakım",
+      "Giyim",
+      "Ev",
+      "Diğer",
+    ]);
+  });
+
+  it.each([
+    ["a float quantity", { ...full, quantity: { value: 1.24, unit: "kg" } }],
+    ["a size without a unit", { ...full, package_size: { value: "500" } }],
+    ["zero packages", { ...full, package_count: 0 }],
+    ["half a package", { ...full, package_count: 1.5 }],
+    ["an unknown category", { ...full, category: "Gıda" }],
+    ["an unknown unsure field", { ...full, unsure: ["colour"] }],
+  ])("rejects %s as extraction_invalid", (_case, item) => {
+    expect(parseExtraction({ ...valid, items: [item] })).toEqual({
+      ok: false,
+      errorCode: "extraction_invalid",
+    });
+  });
+
+  it("rejects an unknown receipt-level unsure field", () => {
+    expect(parseExtraction({ ...valid, unsure: ["name"] })).toEqual({
       ok: false,
       errorCode: "extraction_invalid",
     });
