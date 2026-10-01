@@ -1,5 +1,5 @@
 import { readdirSync, readFileSync, statSync } from "node:fs";
-import { join, relative } from "node:path";
+import { dirname, join, relative } from "node:path";
 import { fileURLToPath } from "node:url";
 import { describe, expect, it } from "vitest";
 
@@ -10,7 +10,7 @@ import { describe, expect, it } from "vitest";
 // those words out of the app's source, comments included, so none can
 // reach a screen later either.
 
-const appRoot = fileURLToPath(new URL("../..", import.meta.url));
+const appRoot = join(dirname(fileURLToPath(import.meta.url)), "../..");
 const INTERNAL = [
   "yükleniyor",
   "sırada",

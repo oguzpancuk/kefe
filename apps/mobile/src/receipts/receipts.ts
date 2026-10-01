@@ -14,7 +14,10 @@ import {
   type MonthTotal,
   type ReceiptField,
 } from "@kefe/core";
-import type { SupabaseClient } from "@supabase/supabase-js";
+import {
+  FunctionsFetchError,
+  type SupabaseClient,
+} from "@supabase/supabase-js";
 import { z } from "zod";
 
 // The receipt flow's calls: Fiş ekle → Kontrol et → Kaydet (ROADMAP
@@ -116,14 +119,19 @@ export function prepareReceipt(
   };
 }
 
+const nothingSaved = "Hiçbir şey kaydedilmedi.";
+
+// ROADMAP v1 2 (docs/design/screens/10-Okunamadi.png): every failure
+// between sending and the draft says plainly that nothing was saved, and
+// Kontrol et offers "Tekrar dene" under it.
 const sendFailed: Failure = {
-  title: "Fiş gönderilemedi.",
-  detail: "İnternet bağlantınızı kontrol edip tekrar deneyin.",
+  title: "Fiş gönderilemedi",
+  detail: `İnternet bağlantınızı kontrol edip tekrar deneyin. ${nothingSaved}`,
 };
 
 const readFailed: Failure = {
-  title: "Fiş okunamadı.",
-  detail: "Ana Sayfa'ya dönüp fişi yeniden ekleyin.",
+  title: "Bu fiş okunamadı",
+  detail: `Fotoğraf bulanık olabilir ya da fişin bir kısmı görünmüyor olabilir. ${nothingSaved}`,
 };
 
 const extractAnswerSchema = z.object({
@@ -131,37 +139,100 @@ const extractAnswerSchema = z.object({
   status: z.enum(["needs_review", "failed"]),
 });
 
+const createdRowsSchema = z.tuple([
+  z.object({
+    id: z.uuid(),
+    status: z.enum([
+      "uploading",
+      "queued",
+      "processing",
+      "needs_review",
+      "saved",
+      "failed",
+    ]),
+  }),
+]);
+
+/** A digest as lowercase hex, the form `receipts.image_sha256` keeps. */
+export function hexOf(digest: ArrayBuffer): string {
+  return Array.from(new Uint8Array(digest), (byte) =>
+    byte.toString(16).padStart(2, "0"),
+  ).join("");
+}
+
+/** Asks `extract-receipt` (mock mode) to read the receipt; ends with the reading. */
+async function readReceipt(
+  client: SupabaseClient,
+  id: string,
+): Promise<Result<object>> {
+  const read = await client.functions.invoke("extract-receipt", {
+    body: { receipt_id: id },
+  });
+  // The connection dropped: whether the reading ran is unknown, and a
+  // repeated send finds out without reading twice.
+  if (read.error instanceof FunctionsFetchError)
+    return { ok: false, failure: sendFailed };
+  const answer = extractAnswerSchema.safeParse(read.data);
+  if (read.error || !answer.success || answer.data.status !== "needs_review")
+    return { ok: false, failure: readFailed };
+  return { ok: true };
+}
+
 /**
- * Uploads the image into the person's folder, creates the receipt with
- * its idempotency key, then asks `extract-receipt` (mock mode) to read it.
+ * Uploads the image into the person's folder, creates the receipt for its
+ * idempotency key, then asks `extract-receipt` (mock mode) to read it.
  * Ends when the draft is ready or the reading failed.
+ *
+ * Safe to repeat with the same `receipt` (ROADMAP v1 2: "Tekrar dene",
+ * or a send cut off mid-way): the photo is written over itself, the key
+ * finds the receipt already made, and a draft that is ready already is
+ * not read again. However often it runs, there is one receipt.
  */
 export async function sendReceipt(
   client: SupabaseClient,
   receipt: PreparedReceipt,
   image: ArrayBuffer,
-  _imageSha256?: string | null,
+  imageSha256: string | null,
 ): Promise<Result<object>> {
   try {
     const upload = await client.storage
       .from(BUCKET)
-      .upload(receipt.imagePath, image, { contentType: receipt.contentType });
+      .upload(receipt.imagePath, image, {
+        contentType: receipt.contentType,
+        upsert: true,
+      });
     if (upload.error) return { ok: false, failure: sendFailed };
 
-    const created = await client.from("receipts").insert({
-      id: receipt.id,
-      idempotency_key: receipt.idempotencyKey,
-      image_path: receipt.imagePath,
+    const created = await client.rpc("create_receipt", {
+      p_id: receipt.id,
+      p_idempotency_key: receipt.idempotencyKey,
+      p_image_path: receipt.imagePath,
+      p_image_sha256: imageSha256,
     });
-    if (created.error) return { ok: false, failure: sendFailed };
+    const rows = createdRowsSchema.safeParse(created.data);
+    if (created.error || !rows.success)
+      return { ok: false, failure: sendFailed };
+    const { status } = rows.data[0];
+    // Read already (a repeat after the answer was lost): Kontrol et
+    // opens what is there; a saved receipt sends it home.
+    if (status === "needs_review" || status === "saved") return { ok: true };
 
-    const read = await client.functions.invoke("extract-receipt", {
-      body: { receipt_id: receipt.id },
-    });
-    const answer = extractAnswerSchema.safeParse(read.data);
-    if (read.error || !answer.success || answer.data.status !== "needs_review")
-      return { ok: false, failure: readFailed };
-    return { ok: true };
+    return await readReceipt(client, rows.data[0].id);
+  } catch {
+    return { ok: false, failure: sendFailed };
+  }
+}
+
+/**
+ * "Tekrar dene" when the photo is no longer at hand (Kontrol et was
+ * reloaded): reads the receipt already made once more.
+ */
+export async function retryReading(
+  client: SupabaseClient,
+  id: string,
+): Promise<Result<object>> {
+  try {
+    return await readReceipt(client, id);
   } catch {
     return { ok: false, failure: sendFailed };
   }
@@ -332,19 +403,61 @@ const savedRowsSchema = z.tuple([
   z.object({ status: z.literal("saved"), total_kurus: z.int() }),
 ]);
 
+/** The saved receipt a draft looks like (PRD #6, duplicate warning). */
+export type Duplicate = {
+  storeName: string | null;
+  purchasedOn: string | null;
+  totalKurus: Kurus;
+};
+
+// save_receipt's refusal when the draft matches a saved receipt
+// (supabase/migrations/20261001120000_retry_duplicates.sql).
+const DUPLICATE = "KF001";
+
+const duplicateSchema = z
+  .object({
+    reason: z.enum(["image", "content"]),
+    store_name: z.string().nullable(),
+    purchased_on: z.iso.date().nullable(),
+    total_kurus: z.int(),
+  })
+  .transform((row): Duplicate => ({
+    storeName: row.store_name,
+    purchasedOn: row.purchased_on,
+    totalKurus: row.total_kurus,
+  }));
+
+function duplicateOf(details: string): Duplicate | null {
+  try {
+    const parsed = duplicateSchema.safeParse(JSON.parse(details));
+    return parsed.success ? parsed.data : null;
+  } catch {
+    return null;
+  }
+}
+
+export type SaveResult =
+  | { ok: true; totalKurus: Kurus }
+  | { ok: false; failure: Failure }
+  | { ok: false; duplicate: Duplicate };
+
 /**
  * Saves the draft with what the person corrected: each changed item with
  * all its fields, and the receipt's facts when one of them changed.
  * Idempotent on the draft's key: a double tap or a retried request saves
  * it once. The saved total is the printed (or corrected) total, or the
  * items' sum when none was read.
+ *
+ * A draft whose photo, or whose store, date and total, match a saved
+ * receipt is not saved: the answer names that receipt so the person can
+ * choose. `allowDuplicate` is their "Yine de kaydet". Nothing is deleted.
  */
 export async function saveReceipt(
   client: SupabaseClient,
   idempotencyKey: string,
   changes: { items: readonly DraftItem[]; receipt?: ReceiptFacts },
-  _options: { allowDuplicate?: boolean } = {},
-): Promise<Result<{ totalKurus: Kurus }>> {
+  options: { allowDuplicate?: boolean } = {},
+): Promise<SaveResult> {
   const failure: Failure = {
     title: "Fiş kaydedilemedi.",
     detail: "Biraz sonra tekrar deneyin.",
@@ -372,7 +485,12 @@ export async function saveReceipt(
             unsure: facts.unsure,
           }
         : {},
+      p_allow_duplicate: options.allowDuplicate ?? false,
     });
+    if (answer.error?.code === DUPLICATE) {
+      const duplicate = duplicateOf(answer.error.details);
+      return duplicate ? { ok: false, duplicate } : { ok: false, failure };
+    }
     const rows = savedRowsSchema.safeParse(answer.data);
     if (answer.error || !rows.success) return { ok: false, failure };
     return { ok: true, totalKurus: rows.data[0].total_kurus };
@@ -428,16 +546,4 @@ export async function loadMonthTotal(
   } catch {
     return { ok: false, failure: loadFailed };
   }
-}
-
-// STUB (red run only): replaced by the real implementation.
-export function retryReading(
-  _client: SupabaseClient,
-  _id: string,
-): Promise<Result<object>> {
-  return Promise.resolve({ ok: false, failure: readFailed });
-}
-
-export function hexOf(_digest: ArrayBuffer): string {
-  return "";
 }
