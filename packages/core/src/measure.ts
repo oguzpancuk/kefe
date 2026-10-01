@@ -103,7 +103,11 @@ export function parseMeasure(input: string): Measure | null {
   if (text === "") return null;
   const match = /^([\d,]+)\s*([^\d\s,]+)$/u.exec(text);
   const unit = match
-    ? UNIT_ALIASES[(match[2] ?? "").toLocaleLowerCase("tr")]
+    ? // Turkish lower-casing makes "KILO" "kılo"; units are ASCII, so
+      // a dotless ı is read as i.
+      UNIT_ALIASES[
+        (match[2] ?? "").toLocaleLowerCase("tr").replaceAll("ı", "i")
+      ]
     : undefined;
   if (!match || !unit) throw new InvalidInputError("a measure", input);
   try {

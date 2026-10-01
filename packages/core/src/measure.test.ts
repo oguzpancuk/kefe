@@ -50,6 +50,10 @@ describe("parseMeasure", () => {
     ["1 lt", { value: "1", unit: "l" }],
     ["750 ml", { value: "750", unit: "ml" }],
     ["15 adet", { value: "15", unit: "adet" }],
+    // Capitals, as with Caps Lock on: Turkish lower-casing makes "I" "ı".
+    ["1 KILO", { value: "1", unit: "kg" }],
+    ["1 LITRE", { value: "1", unit: "l" }],
+    ["2 ADET", { value: "2", unit: "adet" }],
   ])("reads %j", (input, expected) => {
     expect(parseMeasure(input)).toEqual(expected);
   });
