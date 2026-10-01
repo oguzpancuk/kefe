@@ -136,7 +136,8 @@ export function EditFacts({
           flagged={flagged("date")}
           invalid={invalid.includes("date")}
           placeholder="Fişte okunamadı"
-          inputMode="decimal"
+          // Not inputMode="decimal": it wins over keyboardType, and iOS's
+          // decimal pad in Turkish has only ",", so "." could not be typed.
           keyboardType="numbers-and-punctuation"
         />
         <TextField
