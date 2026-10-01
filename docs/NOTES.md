@@ -78,6 +78,13 @@
   in-memory fake (a read failure then "Tekrar dene" → 1 receipt, 2
   uploads to the same name; a cut-off upload then "Tekrar dene" → 1
   receipt); screenshots in `docs/screenshots/v1-2/`.
+- `evaluator-qa` NEEDS_WORK on the first pass: a reload during "Fiş
+  okunuyor" showed "Bu fiş okunamadı" for a read still running (any
+  status other than a draft counted as a failure, a step-5 leftover),
+  and the duplicate dialog clipped at 200 % text. Now Kontrol et waits
+  (`waitForReading`: polls the status, asks for the reading itself if
+  nothing moves for 20 s) and the dialog scrolls. Test seen red first
+  (2 of 39 failing against a stub).
 - Open: "Tekrar fotoğraf çek" and a failed receipt left behind keep a
   `failed` row and its photo (they never count). Removing them belongs
   with delete (v1 5) or the 90-day image retention.

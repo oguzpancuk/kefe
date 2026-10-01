@@ -9,6 +9,7 @@ import {
   retryReading,
   saveReceipt,
   sendReceipt,
+  waitForReading,
 } from "./receipts";
 
 // The app's side of ROADMAP walking skeleton 5 against a stubbed backend:
@@ -356,6 +357,58 @@ describe("retryReading", () => {
       ok: false,
       failure: { title: "Bu fiş okunamadı" },
     });
+  });
+});
+
+// ROADMAP v1 2: a reload while the receipt is read must keep "Fiş
+// okunuyor", not call a reading in progress a failure.
+describe("waitForReading", () => {
+  const statuses = (...list: string[]) =>
+    setup((call) => {
+      if (call.url.pathname === "/rest/v1/receipts")
+        return json(200, [{ status: list.shift() ?? "uploading" }]);
+      return json(200, {
+        receipt_id: RECEIPT,
+        status: "needs_review",
+        source: "mock",
+      });
+    });
+  const noWait = () => Promise.resolve();
+
+  it("waits while the receipt is being read and ends when the draft is ready", async () => {
+    const { client, calls } = statuses(
+      "uploading",
+      "processing",
+      "needs_review",
+    );
+    expect(await waitForReading(client, RECEIPT, { pause: noWait })).toEqual({
+      ok: true,
+    });
+    expect(calls.map((c) => c.url.pathname)).toEqual([
+      "/rest/v1/receipts",
+      "/rest/v1/receipts",
+      "/rest/v1/receipts",
+    ]);
+  });
+
+  it("says the receipt could not be read when the reading failed", async () => {
+    const { client } = statuses("failed");
+    expect(
+      await waitForReading(client, RECEIPT, { pause: noWait }),
+    ).toMatchObject({ ok: false, failure: { title: "Bu fiş okunamadı" } });
+  });
+
+  it("asks for the reading itself when nothing moves for too long", async () => {
+    const { client, calls } = statuses();
+    expect(
+      await waitForReading(client, RECEIPT, { pause: noWait, tries: 3 }),
+    ).toEqual({ ok: true });
+    expect(calls.map((c) => c.url.pathname)).toEqual([
+      "/rest/v1/receipts",
+      "/rest/v1/receipts",
+      "/rest/v1/receipts",
+      "/functions/v1/extract-receipt",
+    ]);
   });
 });
 

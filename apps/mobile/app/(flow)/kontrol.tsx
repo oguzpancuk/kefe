@@ -8,7 +8,7 @@ import {
 } from "@kefe/core";
 import { router, useLocalSearchParams } from "expo-router";
 import { useEffect, useState } from "react";
-import { StyleSheet, Text, View } from "react-native";
+import { ScrollView, StyleSheet, Text, View } from "react-native";
 import { EditFacts } from "../../src/receipts/EditFacts";
 import { EditItem } from "../../src/receipts/EditItem";
 import { pickAndSend } from "../../src/receipts/add";
@@ -22,6 +22,7 @@ import {
   loadDraft,
   retryReading,
   saveReceipt,
+  waitForReading,
   type Draft,
   type DraftItem,
   type Duplicate,
@@ -153,8 +154,17 @@ export default function Check() {
         setState({ kind: "failed", failure: loaded.failure });
       } else if (loaded.draft.status === "saved") {
         goHome();
-      } else if (loaded.draft.status !== "needs_review") {
+      } else if (loaded.draft.status === "failed") {
         setState({ kind: "failed", failure: notReadable });
+      } else if (loaded.draft.status !== "needs_review") {
+        // Still being sent or read (the page was reloaded meanwhile):
+        // keep "Fiş okunuyor" and wait for the reading under way.
+        if (!sent) {
+          trackSending(id, () => waitForReading(client, id));
+          setRound((n) => n + 1);
+        } else {
+          setState({ kind: "failed", failure: notReadable });
+        }
       } else {
         const { draft } = loaded;
         setItems(draft.items);
@@ -461,43 +471,46 @@ function DuplicateDialog({
   ].filter((part) => part !== null);
   return (
     <View style={styles.scrim}>
-      <View
-        style={styles.dialog}
-        role="dialog"
-        aria-modal
-        aria-labelledby="duplicate-title"
-        accessibilityViewIsModal
-      >
-        <View style={[styles.iconCircle, styles.attentionCircle]}>
-          <CopyIcon color={color.attention.fg} size={32} />
-        </View>
-        <Text
-          nativeID="duplicate-title"
-          style={type.section}
-          accessibilityRole="header"
-          accessibilityLiveRegion="assertive"
+      {/* Scrolls when large text makes the dialog taller than the screen. */}
+      <ScrollView contentContainerStyle={styles.scrimContent}>
+        <View
+          style={styles.dialog}
+          role="dialog"
+          aria-modal
+          aria-labelledby="duplicate-title"
+          accessibilityViewIsModal
         >
-          Bu fiş daha önce kaydedilmiş olabilir
-        </Text>
-        <View style={styles.match}>
-          <Text style={type.bodyStrong}>
-            {named.length > 0 ? named.join(" · ") : "Kayıtlı bir fiş"}
+          <View style={[styles.iconCircle, styles.attentionCircle]}>
+            <CopyIcon color={color.attention.fg} size={32} />
+          </View>
+          <Text
+            nativeID="duplicate-title"
+            style={type.section}
+            accessibilityRole="header"
+            accessibilityLiveRegion="assertive"
+          >
+            Bu fiş daha önce kaydedilmiş olabilir
           </Text>
-          <Text style={type.body}>{formatTl(duplicate.totalKurus)}</Text>
+          <View style={styles.match}>
+            <Text style={type.bodyStrong}>
+              {named.length > 0 ? named.join(" · ") : "Kayıtlı bir fiş"}
+            </Text>
+            <Text style={type.body}>{formatTl(duplicate.totalKurus)}</Text>
+          </View>
+          <Text style={[type.body, styles.muted]}>
+            Aynı fişi iki kez kaydederseniz toplam harcamanız iki kat görünür.
+          </Text>
+          <View style={styles.actions}>
+            <Button label="Kaydetme" onPress={onKeep} />
+            <Button
+              label="Yine de kaydet"
+              variant="secondary"
+              busy={saving}
+              onPress={onSaveAnyway}
+            />
+          </View>
         </View>
-        <Text style={[type.body, styles.muted]}>
-          Aynı fişi iki kez kaydederseniz toplam harcamanız iki kat görünür.
-        </Text>
-        <View style={styles.actions}>
-          <Button label="Kaydetme" onPress={onKeep} />
-          <Button
-            label="Yine de kaydet"
-            variant="secondary"
-            busy={saving}
-            onPress={onSaveAnyway}
-          />
-        </View>
-      </View>
+      </ScrollView>
     </View>
   );
 }
@@ -598,6 +611,9 @@ const styles = StyleSheet.create({
   scrim: {
     ...StyleSheet.absoluteFill,
     backgroundColor: "rgba(37,33,31,.55)",
+  },
+  scrimContent: {
+    flexGrow: 1,
     justifyContent: "center",
     padding: screenPadding,
   },

@@ -223,6 +223,56 @@ export async function sendReceipt(
   }
 }
 
+const statusRowsSchema = z.tuple([
+  z.object({
+    status: z.enum([
+      "uploading",
+      "queued",
+      "processing",
+      "needs_review",
+      "saved",
+      "failed",
+    ]),
+  }),
+]);
+
+const second = () => new Promise<void>((done) => setTimeout(done, 1000));
+
+/**
+ * Kontrol et opened (after a reload) on a receipt still being sent or
+ * read: waits for the reading under way instead of calling it a failure,
+ * checking once a `pause` for at most `tries` times. If nothing moves in
+ * that time (the send stopped before the reading was asked for), it asks
+ * for the reading itself.
+ */
+export async function waitForReading(
+  client: SupabaseClient,
+  id: string,
+  {
+    pause = second,
+    tries = 20,
+  }: { pause?: () => Promise<void>; tries?: number } = {},
+): Promise<Result<object>> {
+  try {
+    for (let n = 0; n < tries; n++) {
+      if (n > 0) await pause();
+      const answer = await client
+        .from("receipts")
+        .select("status")
+        .eq("id", id);
+      const rows = statusRowsSchema.safeParse(answer.data);
+      if (answer.error || !rows.success)
+        return { ok: false, failure: sendFailed };
+      const { status } = rows.data[0];
+      if (status === "needs_review" || status === "saved") return { ok: true };
+      if (status === "failed") return { ok: false, failure: readFailed };
+    }
+    return await readReceipt(client, id);
+  } catch {
+    return { ok: false, failure: sendFailed };
+  }
+}
+
 /**
  * "Tekrar dene" when the photo is no longer at hand (Kontrol et was
  * reloaded): reads the receipt already made once more.
