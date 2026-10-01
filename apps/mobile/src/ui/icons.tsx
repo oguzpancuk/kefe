@@ -113,6 +113,31 @@ export function ChevronRightIcon(props: IconProps) {
   );
 }
 
+export function ChevronDownIcon(props: IconProps) {
+  return (
+    <Line {...props}>
+      <Path d="m5 9 7 7 7-7" />
+    </Line>
+  );
+}
+
+export function ChevronUpIcon(props: IconProps) {
+  return (
+    <Line {...props}>
+      <Path d="m5 15 7-7 7 7" />
+    </Line>
+  );
+}
+
+export function PencilIcon(props: IconProps) {
+  return (
+    <Line {...props}>
+      <Path d="M4 20h4L19 9a2.8 2.8 0 0 0-4-4L4 16z" />
+      <Path d="m13.5 6.5 4 4" />
+    </Line>
+  );
+}
+
 export function PlusIcon(props: IconProps) {
   return (
     <Line {...props}>

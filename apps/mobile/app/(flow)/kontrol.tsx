@@ -1,21 +1,16 @@
 import {
   formatDate,
+  formatMeasure,
   formatTl,
-  formatTlAmount,
-  InvalidTlAmountError,
-  parseTlAmount,
-  sumKurus,
-  type Kurus,
+  receiptTotal,
+  totalMismatch,
+  type TotalMismatch,
 } from "@kefe/core";
 import { router, useLocalSearchParams } from "expo-router";
 import { useEffect, useState } from "react";
-import {
-  KeyboardAvoidingView,
-  Platform,
-  StyleSheet,
-  Text,
-  View,
-} from "react-native";
+import { StyleSheet, Text, View } from "react-native";
+import { EditFacts } from "../../src/receipts/EditFacts";
+import { EditItem } from "../../src/receipts/EditItem";
 import { noteSaved, sendingOf } from "../../src/receipts/pending";
 import {
   loadDraft,
@@ -23,6 +18,7 @@ import {
   type Draft,
   type DraftItem,
   type Failure,
+  type ReceiptFacts,
 } from "../../src/receipts/receipts";
 import { supabase } from "../../src/supabase";
 import {
@@ -32,13 +28,13 @@ import {
   Card,
   Footer,
   ListRow,
-  RawLine,
   SampleBanner,
   Screen,
-  TextField,
+  TextButton,
   Title,
+  UnsurePill,
 } from "../../src/ui/components";
-import { Mark } from "../../src/ui/icons";
+import { Mark, PencilIcon } from "../../src/ui/icons";
 import { color, radius, space, type } from "../../src/ui/theme";
 
 type State =
@@ -53,17 +49,58 @@ const notReadable: Failure = {
 
 const goHome = () => router.replace("/");
 
+/**
+ * "Beyaz peynir 500 g", "Beyaz peynir 2 × 250 g", "Domates 1,24 kg": the
+ * name with its size. An unread name shows the printed line as it is.
+ */
+function itemTitle(item: DraftItem): string {
+  if (item.name === null) return item.rawText;
+  const size = item.packageSize ?? item.quantity;
+  if (!size) return item.name;
+  const count =
+    item.packageSize && item.packageCount && item.packageCount > 1
+      ? `${item.packageCount} × `
+      : "";
+  // No-break spaces keep "2 × 250 g" together when the line wraps.
+  return `${item.name} ${count}${formatMeasure(size)}`.replace(
+    / (?=×|[^ ]+$)|(?<=×) /g,
+    "\u00a0",
+  );
+}
+
+function mismatchText(mismatch: TotalMismatch): Failure {
+  const difference = formatTl(mismatch.differenceKurus);
+  return mismatch.direction === "items_less"
+    ? {
+        title: `Kalemler toplamdan ${difference} az.`,
+        detail: "Bir kalem eksik ya da bir tutar yanlış okunmuş olabilir.",
+      }
+    : {
+        title: `Kalemler toplamdan ${difference} fazla.`,
+        detail: "Bir tutar yanlış okunmuş ya da toplam yanlış olabilir.",
+      };
+}
+
+const sameJson = (a: unknown, b: unknown) =>
+  JSON.stringify(a) === JSON.stringify(b);
+
 // Kontrol et (docs/design/screens/07-FisOkunuyor.png, 08-KontrolEt.png):
-// "Fiş okunuyor" while the receipt is sent and read, then the draft with
-// its items; an item opens "Kalemi düzelt" (09-KalemDuzenle.png) where
-// its amount can be corrected; "Kaydet" saves once, however often it is
-// pressed. "Vazgeç" leaves the draft unsaved: it never counts.
+// "Fiş okunuyor" while the receipt is sent and read, then the draft: the
+// store, date and printed total ("Düzelt" opens them), a warning when the
+// items do not add up to the total, and the items, each marked "Kontrol
+// et" when the reader was unsure of any of its fields. An item opens
+// "Kalemi düzelt". "Kaydet" saves once, however often it is pressed;
+// nothing has to be confirmed one by one. "Vazgeç" leaves the draft
+// unsaved: it never counts.
 export default function Check() {
   const { id } = useLocalSearchParams<{ id?: string }>();
   const [state, setState] = useState<State>({ kind: "reading" });
-  // Corrected amounts by item id; the draft keeps what was read.
-  const [edits, setEdits] = useState<ReadonlyMap<string, Kurus>>(new Map());
-  const [editing, setEditing] = useState<DraftItem | null>(null);
+  // The person's corrections; the draft keeps what was read.
+  const [items, setItems] = useState<readonly DraftItem[]>([]);
+  const [facts, setFacts] = useState<ReceiptFacts | null>(null);
+  const [editing, setEditing] = useState<
+    { kind: "item"; index: number } | { kind: "facts" } | null
+  >(null);
   const [saving, setSaving] = useState(false);
   const [saveFailure, setSaveFailure] = useState<Failure | null>(null);
 
@@ -90,7 +127,15 @@ export default function Check() {
       } else if (loaded.draft.status !== "needs_review") {
         setState({ kind: "failed", failure: notReadable });
       } else {
-        setState({ kind: "draft", draft: loaded.draft });
+        const { draft } = loaded;
+        setItems(draft.items);
+        setFacts({
+          storeName: draft.storeName,
+          purchasedOn: draft.purchasedOn,
+          totalKurus: draft.totalKurus,
+          unsure: draft.unsure,
+        });
+        setState({ kind: "draft", draft });
       }
     })();
     return () => {
@@ -100,32 +145,43 @@ export default function Check() {
 
   if (state.kind === "reading") return <Reading />;
 
-  if (state.kind === "failed") {
+  if (state.kind === "failed" || !facts) {
+    const failure = state.kind === "failed" ? state.failure : notReadable;
     return (
       <Screen center>
-        <Alert
-          tone="danger"
-          title={state.failure.title}
-          detail={state.failure.detail}
-        />
+        <Alert tone="danger" title={failure.title} detail={failure.detail} />
         <Button label="Ana Sayfa'ya dön" onPress={goHome} />
       </Screen>
     );
   }
 
   const { draft } = state;
-  const amountOf = (item: DraftItem) => edits.get(item.id) ?? item.amountKurus;
 
-  if (editing) {
+  if (editing?.kind === "facts") {
+    return (
+      <EditFacts
+        facts={facts}
+        onBack={() => setEditing(null)}
+        onDone={(next) => {
+          setFacts(next);
+          setEditing(null);
+        }}
+      />
+    );
+  }
+
+  const editedItem = editing?.kind === "item" ? items[editing.index] : null;
+  if (editing?.kind === "item" && editedItem) {
     return (
       <EditItem
-        key={editing.id}
-        item={editing}
-        amountKurus={amountOf(editing)}
+        key={editedItem.id}
+        item={editedItem}
         onBack={() => setEditing(null)}
-        onDone={(amountKurus) => {
-          setEdits((previous) =>
-            new Map(previous).set(editing.id, amountKurus),
+        onDone={(next) => {
+          setItems((previous) =>
+            previous.map((item, index) =>
+              index === editing.index ? next : item,
+            ),
           );
           setEditing(null);
         }}
@@ -133,15 +189,31 @@ export default function Check() {
     );
   }
 
+  const amounts = items.map((item) => item.amountKurus);
+  const total = receiptTotal(facts.totalKurus, amounts);
+  const mismatch = totalMismatch(facts.totalKurus, amounts);
+  const flagged = (field: "store" | "date" | "total") =>
+    facts.unsure.includes(field);
+
   async function save() {
     const client = supabase;
-    if (!client || saving) return;
+    if (!client || saving || !facts) return;
     setSaving(true);
     setSaveFailure(null);
-    const changed = draft.items
-      .filter((item) => amountOf(item) !== item.amountKurus)
-      .map((item) => ({ id: item.id, amountKurus: amountOf(item) }));
-    const result = await saveReceipt(client, draft.idempotencyKey, changed);
+    const original = new Map(draft.items.map((item) => [item.id, item]));
+    const changedItems = items.filter(
+      (item) => !sameJson(item, original.get(item.id)),
+    );
+    const originalFacts: ReceiptFacts = {
+      storeName: draft.storeName,
+      purchasedOn: draft.purchasedOn,
+      totalKurus: draft.totalKurus,
+      unsure: draft.unsure,
+    };
+    const result = await saveReceipt(client, draft.idempotencyKey, {
+      items: changedItems,
+      receipt: sameJson(facts, originalFacts) ? undefined : facts,
+    });
     if (result.ok) {
       noteSaved();
       router.replace("/");
@@ -150,6 +222,8 @@ export default function Check() {
     setSaving(false);
     setSaveFailure(result.failure);
   }
+
+  const warning = mismatch ? mismatchText(mismatch) : null;
 
   return (
     <View style={styles.page}>
@@ -164,39 +238,64 @@ export default function Check() {
         {draft.isSample ? <SampleBanner /> : null}
         <Card>
           <View style={styles.facts}>
-            <View>
-              <Text style={type.caption}>Mağaza</Text>
-              <Text style={type.bodyStrong}>
-                {draft.storeName ?? "Okunamadı"}
-              </Text>
+            <View style={styles.storeRow}>
+              <View style={styles.store}>
+                <Text style={type.caption}>Mağaza</Text>
+                <Text style={type.bodyStrong}>
+                  {facts.storeName ?? "Okunamadı"}
+                </Text>
+                {flagged("store") ? <UnsurePill /> : null}
+              </View>
+              <TextButton
+                label="Düzelt"
+                accessibilityLabel="Mağaza, tarih ve toplamı düzelt"
+                icon={PencilIcon}
+                onPress={() => setEditing({ kind: "facts" })}
+              />
             </View>
             <View style={styles.divider} />
             <View style={styles.dateTotal}>
               <View style={styles.date}>
                 <Text style={type.caption}>Tarih</Text>
                 <Text style={type.bodyStrong}>
-                  {draft.purchasedOn
-                    ? formatDate(draft.purchasedOn)
+                  {facts.purchasedOn
+                    ? formatDate(facts.purchasedOn)
                     : "Okunamadı"}
                 </Text>
+                {flagged("date") ? <UnsurePill /> : null}
               </View>
               <View style={styles.totalBox}>
-                <Text style={[type.caption, styles.right]}>Toplam</Text>
-                <Text style={[type.figure, styles.right]}>
-                  {formatTl(sumKurus(draft.items.map(amountOf)))}
+                <Text style={[type.caption, styles.right]}>
+                  {total.fromItems ? "Toplam (kalemlerden)" : "Toplam"}
                 </Text>
+                <Text style={[type.figure, styles.right]}>
+                  {formatTl(total.totalKurus)}
+                </Text>
+                {flagged("total") || total.fromItems ? (
+                  <View style={styles.pillRight}>
+                    <UnsurePill />
+                  </View>
+                ) : null}
               </View>
             </View>
           </View>
         </Card>
+        {warning ? (
+          <Alert
+            tone="attention"
+            title={warning.title}
+            detail={warning.detail}
+          />
+        ) : null}
         <View style={styles.list}>
-          {draft.items.map((item, index) => (
+          {items.map((item, index) => (
             <ListRow
               key={item.id}
-              title={item.name ?? item.rawText}
-              amount={formatTl(amountOf(item))}
-              last={index === draft.items.length - 1}
-              onPress={() => setEditing(item)}
+              title={itemTitle(item)}
+              amount={formatTl(item.amountKurus)}
+              flagged={item.unsure.length > 0}
+              last={index === items.length - 1}
+              onPress={() => setEditing({ kind: "item", index })}
             />
           ))}
         </View>
@@ -245,78 +344,19 @@ function Reading() {
   );
 }
 
-/** Kalemi düzelt: the printed line, the name and the amount. */
-function EditItem({
-  item,
-  amountKurus,
-  onBack,
-  onDone,
-}: {
-  item: DraftItem;
-  amountKurus: Kurus;
-  onBack: () => void;
-  onDone: (amountKurus: Kurus) => void;
-}) {
-  const [text, setText] = useState(formatTlAmount(amountKurus));
-  const [invalid, setInvalid] = useState(false);
-
-  function done() {
-    try {
-      onDone(parseTlAmount(text));
-    } catch (error) {
-      if (!(error instanceof InvalidTlAmountError)) throw error;
-      setInvalid(true);
-    }
-  }
-
-  // iOS: the number pad has no return key and covers the bottom of the
-  // screen, so "Tamam" rises above it.
-  return (
-    <KeyboardAvoidingView
-      style={styles.page}
-      behavior={Platform.OS === "ios" ? "padding" : undefined}
-    >
-      <Screen>
-        <BackButton to="Kontrol et" onPress={onBack} />
-        <Title>Kalemi düzelt</Title>
-        <RawLine>{item.rawText}</RawLine>
-        <View style={styles.name}>
-          <Text style={type.label}>Ürün adı</Text>
-          <Text style={type.bodyStrong}>{item.name ?? "Okunamadı"}</Text>
-        </View>
-        {invalid ? (
-          <Alert
-            tone="danger"
-            title="Tutar anlaşılamadı."
-            detail="Tutarı 12,50 gibi, virgülle yazın."
-          />
-        ) : null}
-        <TextField
-          label="Tutar"
-          value={text}
-          onChangeText={(value) => {
-            setText(value);
-            setInvalid(false);
-          }}
-          suffix="TL"
-          invalid={invalid}
-          inputMode="decimal"
-          keyboardType="decimal-pad"
-          returnKeyType="done"
-          onSubmitEditing={done}
-        />
-      </Screen>
-      <Footer>
-        <Button label="Tamam" onPress={done} />
-      </Footer>
-    </KeyboardAvoidingView>
-  );
-}
-
 const styles = StyleSheet.create({
   page: { flex: 1, backgroundColor: color.background },
   heading: { gap: space.xs },
   facts: { gap: space.md },
+  storeRow: {
+    flexDirection: "row",
+    flexWrap: "wrap",
+    alignItems: "flex-start",
+    justifyContent: "space-between",
+    gap: space.sm,
+  },
+  store: { flexShrink: 1, gap: space.xxs, alignItems: "flex-start" },
+  pillRight: { alignSelf: "flex-end", marginTop: space.xxs },
   divider: { height: 1, backgroundColor: color.border },
   dateTotal: {
     flexDirection: "row",
@@ -325,7 +365,7 @@ const styles = StyleSheet.create({
     alignItems: "flex-end",
     gap: space.sm,
   },
-  date: { flexShrink: 1 },
+  date: { flexShrink: 1, gap: space.xxs, alignItems: "flex-start" },
   totalBox: { marginLeft: "auto" },
   right: { textAlign: "right" },
   list: {
@@ -335,7 +375,6 @@ const styles = StyleSheet.create({
     borderRadius: radius.card,
     overflow: "hidden",
   },
-  name: { gap: space.xxs },
   reading: { alignItems: "center", gap: space.xl },
   markCircle: {
     width: 176,

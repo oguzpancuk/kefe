@@ -22,7 +22,9 @@ let b: User;
 
 type Row = Record<string, unknown>;
 
-const MOCK_TOTAL = 8640;
+// The mock's printed total; its items add up to 2,50 TL less (60985).
+const MOCK_TOTAL = 61235;
+const MOCK_AMOUNTS = [3450, 8990, 18900, 4948, 1500, 13200, 9997];
 
 // `month` is the month of the draft's printed date, read back: the mock
 // dates its sample by its own clock, so a run across midnight still
@@ -60,12 +62,12 @@ async function newDraft(owner: User): Promise<Draft> {
   };
 }
 
-async function itemsOf(owner: User, id: string): Promise<Row[]> {
+async function itemsOf(owner: User, id: string, select = "*"): Promise<Row[]> {
   const { status, rows } = await rest(
     stack,
     owner,
     "GET",
-    `receipt_items?receipt_id=eq.${id}&order=line_no`,
+    `receipt_items?select=${select}&receipt_id=eq.${id}&order=line_no`,
   );
   if (status !== 200) throw new Error(`reading items: HTTP ${status}`);
   return rows as Row[];
@@ -104,10 +106,16 @@ async function homeTotal(owner: User, month: Month): Promise<MonthTotal> {
   return monthTotal(rows as ReceiptForTotal[], month);
 }
 
-const save = (caller: User, key: string, items: unknown[] = []) =>
+const save = (
+  caller: User,
+  key: string,
+  items: unknown[] = [],
+  receipt: Record<string, unknown> = {},
+) =>
   rest(stack, caller, "POST", "rpc/save_receipt", {
     p_idempotency_key: key,
     p_items: items,
+    p_receipt: receipt,
   });
 
 beforeAll(async () => {
@@ -133,56 +141,178 @@ describe("a draft", () => {
 describe("saving a draft with one amount corrected", () => {
   let draft: Draft;
   let first: { status: number; rows: unknown[] };
-  // 12,50 → 15,00 on the first line: +250 kuruş.
-  const EDITED_TOTAL = MOCK_TOTAL + 250;
+  // 34,50 → 37,00 on the first line: the items now add up to the total.
+  const EDITED = [3700, ...MOCK_AMOUNTS.slice(1)];
 
   beforeAll(async () => {
     draft = await newDraft(a);
     first = await save(a, draft.key, [
-      { id: draft.items[0]?.id, amount_kurus: 1500 },
+      { id: draft.items[0]?.id, amount_kurus: 3700 },
     ]);
   });
 
-  it("answers with the saved receipt and its edited total", () => {
+  // ROADMAP v1 1: the printed total is the receipt's total; the items no
+  // longer overwrite it (step 5 saved their sum).
+  it("answers with the saved receipt and its printed total", () => {
     expect(first.status).toBe(200);
     expect(first.rows).toEqual([
       expect.objectContaining({
         id: draft.id,
         status: "saved",
-        total_kurus: EDITED_TOTAL,
+        total_kurus: MOCK_TOTAL,
       }),
     ]);
   });
 
   it("stores the edited amount and keeps the line as printed", async () => {
     const items = await itemsOf(a, draft.id);
-    expect(items.map((item) => item.amount_kurus)).toEqual([1500, 3490, 3900]);
-    expect(items[0]).toMatchObject({ raw_text: "EKMEK 1 AD 12,50" });
+    expect(items.map((item) => item.amount_kurus)).toEqual(EDITED);
+    expect(items[0]).toMatchObject({ raw_text: "SUT TAM YAGLI 1 LT 34,50" });
   });
 
   it("moves the month total by exactly the saved total", async () => {
     expect(await homeTotal(a, draft.month)).toEqual({
-      totalKurus: EDITED_TOTAL,
+      totalKurus: MOCK_TOTAL,
       count: 1,
     });
   });
 
   it("counts it once when the same key is saved again, even with other edits", async () => {
-    const again = await save(a, draft.key, [
-      { id: draft.items[1]?.id, amount_kurus: 1 },
-    ]);
+    const again = await save(
+      a,
+      draft.key,
+      [{ id: draft.items[1]?.id, amount_kurus: 1 }],
+      { total_kurus: 1 },
+    );
     expect(again.status).toBe(200);
     expect(again.rows).toEqual([
-      expect.objectContaining({ id: draft.id, total_kurus: EDITED_TOTAL }),
+      expect.objectContaining({ id: draft.id, total_kurus: MOCK_TOTAL }),
     ]);
     const items = await itemsOf(a, draft.id);
-    expect(items.map((item) => item.amount_kurus)).toEqual([1500, 3490, 3900]);
+    expect(items.map((item) => item.amount_kurus)).toEqual(EDITED);
     const saved = (await receiptsOf(a)).filter((r) => r.status === "saved");
     expect(saved).toHaveLength(1);
     expect(await homeTotal(a, draft.month)).toEqual({
-      totalKurus: EDITED_TOTAL,
+      totalKurus: MOCK_TOTAL,
       count: 1,
     });
+  });
+});
+
+// ROADMAP v1 1 / PRD #5: every listed field can be changed and the change
+// survives save and reopen; the reader's output stays as it came.
+describe("saving a draft with every field corrected", () => {
+  let reader: User;
+  let draft: Draft;
+  let answer: { status: number; rows: unknown[] };
+
+  beforeAll(async () => {
+    const user = await signUp(stack);
+    draft = await newDraft(user);
+    answer = await save(
+      user,
+      draft.key,
+      [
+        {
+          id: draft.items[2]?.id,
+          name: "Tam yağlı beyaz peynir",
+          brand: "Köy",
+          quantity: { value: "0.5", unit: "kg" },
+          package_size: { value: "250", unit: "g" },
+          package_count: 2,
+          category: "other",
+          amount_kurus: 19150,
+          unsure: [],
+        },
+      ],
+      {
+        store_name: "Mahalle Bakkalı",
+        purchased_on: "2026-09-28",
+        total_kurus: 61485,
+        unsure: [],
+      },
+    );
+    reader = user;
+  });
+
+  it("saves with the corrected total", () => {
+    expect(answer.status).toBe(200);
+    expect(answer.rows).toEqual([
+      expect.objectContaining({
+        status: "saved",
+        store_name: "Mahalle Bakkalı",
+        purchased_on: "2026-09-28",
+        total_kurus: 61485,
+      }),
+    ]);
+  });
+
+  it("reads every corrected item field back", async () => {
+    const items = await itemsOf(
+      reader,
+      draft.id,
+      "raw_text,name,brand,quantity::text,quantity_unit,package_size::text,package_size_unit,package_count,category,amount_kurus,unsure",
+    );
+    expect(items[2]).toEqual({
+      raw_text: "B.PEYNIR TAM YAG 500G 189,00",
+      name: "Tam yağlı beyaz peynir",
+      brand: "Köy",
+      quantity: "0.500",
+      quantity_unit: "kg",
+      package_size: "250.000",
+      package_size_unit: "g",
+      package_count: 2,
+      category: "other",
+      amount_kurus: 19150,
+      unsure: [],
+    });
+    // The other items keep what was read.
+    expect(items[0]).toMatchObject({ name: "Süt", amount_kurus: 3450 });
+  });
+
+  it("keeps the reader's output unchanged next to the corrections", async () => {
+    const { rows } = await rest(
+      stack,
+      reader,
+      "GET",
+      `receipts?select=extraction&id=eq.${draft.id}`,
+    );
+    expect(rows[0]).toMatchObject({
+      extraction: { store: "Örnek Market", total_kurus: MOCK_TOTAL },
+    });
+  });
+
+  it("counts the corrected total in the corrected date's month", async () => {
+    expect(await homeTotal(reader, "2026-09")).toEqual({
+      totalKurus: 61485,
+      count: 1,
+    });
+  });
+});
+
+describe("a draft whose total was not read", () => {
+  it("is saved with the items' sum", async () => {
+    const user = await signUp(stack);
+    const draft = await newDraft(user);
+    const reread = await rest(stack, user, "POST", "rpc/record_extraction", {
+      p_receipt_id: draft.id,
+      p_source: "mock",
+      p_extraction: {
+        store: null,
+        date: null,
+        total_kurus: null,
+        unsure: ["total"],
+        items: [
+          { raw_text: "EKMEK 15,00", name: "Ekmek", amount_kurus: 1500 },
+          { raw_text: "SU 7,00", name: "Su", amount_kurus: 700 },
+        ],
+      },
+    });
+    expect(reread.status).toBeLessThan(300);
+    const answer = await save(user, draft.key);
+    expect(answer.rows).toEqual([
+      expect.objectContaining({ status: "saved", total_kurus: 2200 }),
+    ]);
   });
 });
 
@@ -215,7 +345,7 @@ describe("a save that cannot apply", () => {
     const rows = await receiptsOf(user);
     expect(rows.every((r) => r.status === "needs_review")).toBe(true);
     expect((await itemsOf(user, other.id))[0]).toMatchObject({
-      amount_kurus: 1250,
+      amount_kurus: 3450,
     });
     expect(await homeTotal(user, draft.month)).toEqual({
       totalKurus: 0,
@@ -228,6 +358,29 @@ describe("a save that cannot apply", () => {
     const draft = await newDraft(user);
     const answer = await save(user, draft.key, [
       { id: draft.items[0]?.id, amount_kurus: 12.5 },
+    ]);
+    expect(answer.status).toBeGreaterThanOrEqual(400);
+    expect(await homeTotal(user, draft.month)).toEqual({
+      totalKurus: 0,
+      count: 0,
+    });
+  });
+
+  it.each([
+    [
+      "a size with four decimals",
+      { package_size: { value: "1.2345", unit: "kg" } },
+    ],
+    ["a size given as a number", { package_size: { value: 1.5, unit: "kg" } }],
+    ["an unknown unit", { quantity: { value: "1", unit: "kutu" } }],
+    ["an unknown category", { category: "Gıda" }],
+    ["zero packages", { package_count: 0 }],
+    ["an unknown unsure mark", { unsure: ["renk"] }],
+  ])("refuses %s and saves nothing", async (_case, fields) => {
+    const user = await signUp(stack);
+    const draft = await newDraft(user);
+    const answer = await save(user, draft.key, [
+      { id: draft.items[0]?.id, amount_kurus: 3450, ...fields },
     ]);
     expect(answer.status).toBeGreaterThanOrEqual(400);
     expect(await homeTotal(user, draft.month)).toEqual({

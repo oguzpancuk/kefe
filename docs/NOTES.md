@@ -47,6 +47,48 @@
   browser, and the battery has no browser step. Screens with an input
   beside a button should be driven at 320 px until it has one.
 
+## 2026-10-01 — v1 1: receipt model complete in core, the check screen
+
+- `@kefe/core`: items carry all seven fields (name, brand, quantity,
+  package size, package count, category, amount) and the reader's unsure
+  marks; receipts carry store/date/total marks. `measure.ts` reads Turkish
+  decimals and measures ("1,24 kg", "500 g", "1 L", "15 adet") into
+  decimal strings, never floats; a "." is refused as ambiguous.
+  `check.ts`: `totalMismatch` in whole kuruş, `receiptTotal` (printed,
+  else the items' sum), `otherInfoUnsure`, `unsureAfterCheck`,
+  `parseTrDate`/`formatDateNumeric`. Six starting categories stored by
+  code (`food`, `cleaning`, ...) with Turkish labels in core.
+- Migration `20261001080000_item_details.sql`: new item columns
+  (numeric(12,3) for sizes, read as `::text`), `unsure` arrays,
+  `receipts.extraction` (the reader's validated output, never changed by
+  save). `record_extraction(receipt, source, extraction jsonb)` replaces
+  the six-argument version; `save_receipt(key, items, receipt)` applies
+  every corrected item field and the store/date/total.
+- Decision (revisits step 5's): the saved total is the printed total as
+  read or corrected; the items' sum only when no total was read. Editing
+  an item no longer moves the total; the mismatch warning tells the
+  person instead.
+- Unsure marks clear when the person presses "Tamam": name and amount
+  always (they were in view), the hidden fields only if "Diğer bilgiler"
+  was opened; the receipt's facts on "Tamam" in "Fiş bilgilerini düzelt".
+- The mock now reads the design's sample: seven lines adding up to
+  2,50 TL less than the printed 612,35, the cheese's brand unread and
+  marked unsure. Supabase tests updated to it.
+- Red runs: core 72 of 95 failing against stubs; app `receipts.test.ts`
+  6 of 26 failing against the step-5 code; the Supabase suite failing in
+  CI on PR #9's first commit (tests and mock, no migration: extraction
+  answered 502).
+- Verified: migration on a scratch Postgres 16 with stubbed auth/storage
+  (mock read, every refusal, corrected save, null total → items' sum,
+  failure clears extraction); web flow driven with Playwright against an
+  in-memory fake; screenshots in `docs/screenshots/v1-1/`.
+- Open: there is no way to add a missing item or delete one on Kontrol
+  et; "Bir kalem eksik olabilir" can only be answered by correcting
+  amounts or the total. Not in v1 1's clause; needs a ROADMAP decision.
+- Open (from step 6, still): iOS's region decimal key. Measures refuse
+  "." as core's amounts do.
+- Next ROADMAP item: v1 2 (processing states, retry, duplicate warning).
+
 ## 2026-09-30 — walking skeleton step 6: the same flow on iOS (code)
 
 - iOS keeps the Auth session in the keychain: `keychainStorage` in

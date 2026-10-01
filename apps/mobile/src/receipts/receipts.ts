@@ -1,9 +1,18 @@
 import {
+  categories,
+  decimalSchema,
+  itemFields,
+  measureUnits,
   monthRange,
   monthTotal,
+  receiptFields,
+  type Category,
+  type ItemField,
   type Kurus,
+  type Measure,
   type Month,
   type MonthTotal,
+  type ReceiptField,
 } from "@kefe/core";
 import type { SupabaseClient } from "@supabase/supabase-js";
 import { z } from "zod";
@@ -171,31 +180,98 @@ const receiptRowSchema = z.object({
   source: z.enum(["mock", "ai"]).nullable(),
   store_name: z.string().nullable(),
   purchased_on: z.iso.date().nullable(),
+  total_kurus: z.int().nullable(),
+  unsure: z.array(z.enum(receiptFields)),
 });
 
-const itemRowSchema = z.object({
-  id: z.uuid(),
-  raw_text: z.string(),
-  name: z.string().nullable(),
-  amount_kurus: z.int(),
-});
+const unitSchema = z.enum(measureUnits).nullable();
 
+/** A value and its unit columns: both set, or both null. */
+function measureOf(
+  value: string | null,
+  unit: z.infer<typeof unitSchema>,
+): Measure | null | undefined {
+  if (value === null && unit === null) return null;
+  if (value === null || unit === null) return undefined;
+  return { value, unit };
+}
+
+const itemRowSchema = z
+  .object({
+    id: z.uuid(),
+    raw_text: z.string(),
+    name: z.string().nullable(),
+    brand: z.string().nullable(),
+    // numeric(12,3) asked for as text ("500.000"), never as a float.
+    quantity: decimalSchema.nullable(),
+    quantity_unit: unitSchema,
+    package_size: decimalSchema.nullable(),
+    package_size_unit: unitSchema,
+    package_count: z.int().positive().nullable(),
+    category: z.enum(categories).nullable(),
+    amount_kurus: z.int(),
+    unsure: z.array(z.enum(itemFields)),
+  })
+  .transform((row, context): DraftItem => {
+    const quantity = measureOf(row.quantity, row.quantity_unit);
+    const packageSize = measureOf(row.package_size, row.package_size_unit);
+    if (quantity === undefined || packageSize === undefined) {
+      context.addIssue({ code: "custom", message: "a measure lacks its unit" });
+      return z.NEVER;
+    }
+    return {
+      id: row.id,
+      rawText: row.raw_text,
+      name: row.name,
+      brand: row.brand,
+      quantity,
+      packageSize,
+      packageCount: row.package_count,
+      category: row.category,
+      amountKurus: row.amount_kurus,
+      unsure: row.unsure,
+    };
+  });
+
+const ITEM_COLUMNS =
+  "id,line_no,raw_text,name,brand,quantity::text,quantity_unit," +
+  "package_size::text,package_size_unit,package_count,category," +
+  "amount_kurus,unsure";
+
+/** One line of the receipt with all seven fields (PRD #5). */
 export type DraftItem = {
   id: string;
   /** The line as printed on the receipt. */
   rawText: string;
   name: string | null;
+  /** Null when unreadable: never guessed. */
+  brand: string | null;
+  /** Weighed or counted at the till ("1,24 kg"). */
+  quantity: Measure | null;
+  /** One package's size ("500 g"), apart from the number of packages. */
+  packageSize: Measure | null;
+  packageCount: number | null;
+  category: Category | null;
   amountKurus: Kurus;
+  /** Fields the reader was unsure of: shown as "Kontrol et". */
+  unsure: ItemField[];
 };
 
-export type Draft = {
+/** The receipt's own facts, as read or as the person corrected them. */
+export type ReceiptFacts = {
+  storeName: string | null;
+  purchasedOn: string | null;
+  /** The printed total; null when it could not be read. */
+  totalKurus: Kurus | null;
+  unsure: ReceiptField[];
+};
+
+export type Draft = ReceiptFacts & {
   id: string;
   idempotencyKey: string;
   status: z.infer<typeof receiptRowSchema>["status"];
   /** Read by the mock, not from the person's receipt: say so on screen. */
   isSample: boolean;
-  storeName: string | null;
-  purchasedOn: string | null;
   items: DraftItem[];
 };
 
@@ -213,7 +289,7 @@ export async function loadDraft(
     const receiptAnswer = await client
       .from("receipts")
       .select(
-        "id,idempotency_key,status,source,store_name,purchased_on,total_kurus",
+        "id,idempotency_key,status,source,store_name,purchased_on,total_kurus,unsure",
       )
       .eq("id", id);
     const receipts = z.array(receiptRowSchema).safeParse(receiptAnswer.data);
@@ -224,7 +300,7 @@ export async function loadDraft(
 
     const itemAnswer = await client
       .from("receipt_items")
-      .select("id,line_no,raw_text,name,amount_kurus")
+      .select(ITEM_COLUMNS)
       .eq("receipt_id", id)
       .order("line_no", { ascending: true });
     const items = z.array(itemRowSchema).safeParse(itemAnswer.data);
@@ -240,12 +316,9 @@ export async function loadDraft(
         isSample: receipt.source === "mock",
         storeName: receipt.store_name,
         purchasedOn: receipt.purchased_on,
-        items: items.data.map((item) => ({
-          id: item.id,
-          rawText: item.raw_text,
-          name: item.name,
-          amountKurus: item.amount_kurus,
-        })),
+        totalKurus: receipt.total_kurus,
+        unsure: receipt.unsure,
+        items: items.data,
       },
     };
   } catch {
@@ -259,25 +332,44 @@ const savedRowsSchema = z.tuple([
 ]);
 
 /**
- * Saves the draft with the amounts the person corrected. Idempotent on
- * the draft's key: a double tap or a retried request saves it once.
+ * Saves the draft with what the person corrected: each changed item with
+ * all its fields, and the receipt's facts when one of them changed.
+ * Idempotent on the draft's key: a double tap or a retried request saves
+ * it once. The saved total is the printed (or corrected) total, or the
+ * items' sum when none was read.
  */
 export async function saveReceipt(
   client: SupabaseClient,
   idempotencyKey: string,
-  edits: readonly { id: string; amountKurus: Kurus }[],
+  changes: { items: readonly DraftItem[]; receipt?: ReceiptFacts },
 ): Promise<Result<{ totalKurus: Kurus }>> {
   const failure: Failure = {
     title: "Fiş kaydedilemedi.",
     detail: "Biraz sonra tekrar deneyin.",
   };
+  const facts = changes.receipt;
   try {
     const answer = await client.rpc("save_receipt", {
       p_idempotency_key: idempotencyKey,
-      p_items: edits.map((edit) => ({
-        id: edit.id,
-        amount_kurus: edit.amountKurus,
+      p_items: changes.items.map((item) => ({
+        id: item.id,
+        name: item.name,
+        brand: item.brand,
+        quantity: item.quantity,
+        package_size: item.packageSize,
+        package_count: item.packageCount,
+        category: item.category,
+        amount_kurus: item.amountKurus,
+        unsure: item.unsure,
       })),
+      p_receipt: facts
+        ? {
+            store_name: facts.storeName,
+            purchased_on: facts.purchasedOn,
+            total_kurus: facts.totalKurus,
+            unsure: facts.unsure,
+          }
+        : {},
     });
     const rows = savedRowsSchema.safeParse(answer.data);
     if (answer.error || !rows.success) return { ok: false, failure };

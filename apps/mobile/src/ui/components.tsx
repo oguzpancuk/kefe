@@ -14,8 +14,10 @@ import { useSafeAreaInsets } from "react-native-safe-area-context";
 import {
   AlertIcon,
   CheckIcon,
+  ChevronDownIcon,
   ChevronLeftIcon,
   ChevronRightIcon,
+  ChevronUpIcon,
   FlaskIcon,
 } from "./icons";
 import {
@@ -153,9 +155,12 @@ type TextFieldProps = {
   secret?: boolean;
   /** A unit written inside the box, after the text ("TL"). */
   suffix?: string;
+  /** The reader was unsure: "Kontrol et" beside the label. */
+  flagged?: boolean;
 } & Pick<
   TextInputProps,
   | "placeholder"
+  | "autoCapitalize"
   | "autoComplete"
   | "keyboardType"
   | "textContentType"
@@ -174,23 +179,28 @@ export function TextField({
   hint,
   secret = false,
   suffix,
+  flagged = false,
+  autoCapitalize = "none",
   ...inputProps
 }: TextFieldProps) {
   const [shown, setShown] = useState(false);
   return (
     <View style={styles.field}>
-      <Text style={type.label}>{label}</Text>
+      <FieldLabel label={label} flagged={flagged} />
       {hint ? <Text style={type.caption}>{hint}</Text> : null}
       <View style={[styles.inputBox, invalid && styles.inputBoxInvalid]}>
         <TextInput
           {...inputProps}
           value={value}
           onChangeText={onChangeText}
-          accessibilityLabel={suffix ? `${label} (${suffix})` : label}
+          accessibilityLabel={
+            (suffix ? `${label} (${suffix})` : label) +
+            (flagged ? ", Kontrol et" : "")
+          }
           accessibilityHint={hint}
           aria-invalid={invalid}
           secureTextEntry={secret && !shown}
-          autoCapitalize="none"
+          autoCapitalize={autoCapitalize}
           autoCorrect={false}
           placeholderTextColor={color.textMuted}
           style={[type.input, styles.input]}
@@ -226,20 +236,18 @@ export function Alert({
   title,
   detail,
 }: {
-  tone: "danger" | "success";
+  tone: "danger" | "success" | "attention";
   title: string;
   detail: string;
 }) {
-  const palette = tone === "danger" ? color.danger : color.success;
-  const Icon = tone === "danger" ? AlertIcon : CheckIcon;
+  const palette = color[tone];
+  const edge = tone === "attention" ? color.attention.border : palette.fg;
+  const Icon = tone === "success" ? CheckIcon : AlertIcon;
   return (
     <View
       accessibilityRole="alert"
       accessibilityLiveRegion="assertive"
-      style={[
-        styles.alert,
-        { backgroundColor: palette.bg, borderColor: palette.fg },
-      ]}
+      style={[styles.alert, { backgroundColor: palette.bg, borderColor: edge }]}
     >
       <Icon color={palette.fg} size={28} />
       <Text style={[type.body, styles.alertText, { color: palette.fg }]}>
@@ -279,17 +287,20 @@ export function ListRow({
   amount,
   onPress,
   last = false,
+  flagged = false,
 }: {
   title: string;
   amount: string;
   onPress: () => void;
   last?: boolean;
+  /** Something on this line needs a look: "Kontrol et" under the title. */
+  flagged?: boolean;
 }) {
   return (
     <Pressable
       onPress={onPress}
       accessibilityRole="button"
-      accessibilityLabel={`${title}, ${amount}`}
+      accessibilityLabel={`${title}, ${amount}${flagged ? ", Kontrol et" : ""}`}
       accessibilityHint="Düzeltmek için dokunun"
       style={({ pressed }) => [
         styles.row,
@@ -297,10 +308,206 @@ export function ListRow({
         pressed && styles.rowPressed,
       ]}
     >
-      <Text style={[type.bodyStrong, styles.rowTitle]}>{title}</Text>
-      <Text style={[type.bodyStrong, styles.rowAmount]}>{amount}</Text>
+      <View style={styles.rowBody}>
+        <View style={styles.rowLine}>
+          <Text style={[type.bodyStrong, styles.rowTitle]}>{title}</Text>
+          <Text style={[type.bodyStrong, styles.rowAmount]}>{amount}</Text>
+        </View>
+        {/* Under the whole line, so it never squeezes into a narrow column. */}
+        {flagged ? <UnsurePill /> : null}
+      </View>
       <ChevronRightIcon color={color.textMuted} />
     </Pressable>
+  );
+}
+
+/**
+ * "Kontrol et": the reader was unsure of this value. Amber pill with a
+ * triangle and the words, never colour alone (DESIGN.md).
+ */
+export function UnsurePill() {
+  return (
+    <View style={styles.pill}>
+      <AlertIcon color={color.attention.fg} size={20} />
+      <Text style={[type.label, { color: color.attention.fg }]}>
+        Kontrol et
+      </Text>
+    </View>
+  );
+}
+
+/** A field's label, with "Kontrol et" beside it when the value is unsure. */
+export function FieldLabel({
+  label,
+  flagged = false,
+}: {
+  label: string;
+  flagged?: boolean;
+}) {
+  return (
+    <View style={styles.labelRow}>
+      <Text style={type.label}>{label}</Text>
+      {flagged ? <UnsurePill /> : null}
+    </View>
+  );
+}
+
+/** Blue words with an optional icon, 48 high (DESIGN.md: text button). */
+export function TextButton({
+  label,
+  onPress,
+  icon: Icon,
+  accessibilityLabel,
+}: {
+  label: string;
+  onPress: () => void;
+  icon?: (props: { color: string; size: number }) => ReactNode;
+  accessibilityLabel?: string;
+}) {
+  return (
+    <Pressable
+      onPress={onPress}
+      accessibilityRole="button"
+      accessibilityLabel={accessibilityLabel ?? label}
+      style={({ pressed }) => [
+        styles.textButton,
+        pressed && styles.pressedText,
+      ]}
+    >
+      {Icon?.({ color: color.primary, size: icon.default })}
+      <Text style={[type.bodyStrong, styles.link]}>{label}</Text>
+    </Pressable>
+  );
+}
+
+/**
+ * A card that opens on tap ("Diğer bilgiler"). Closed, it names what is
+ * inside and shows "Kontrol et" when something inside is unsure.
+ */
+export function Disclosure({
+  title,
+  summary,
+  open,
+  onToggle,
+  flagged = false,
+  children,
+}: {
+  title: string;
+  summary: string;
+  open: boolean;
+  onToggle: () => void;
+  flagged?: boolean;
+  children: ReactNode;
+}) {
+  const Chevron = open ? ChevronUpIcon : ChevronDownIcon;
+  return (
+    <View style={styles.card}>
+      <Pressable
+        onPress={onToggle}
+        accessibilityRole="button"
+        accessibilityState={{ expanded: open }}
+        accessibilityLabel={
+          `${title}: ${summary}` + (flagged && !open ? ", Kontrol et" : "")
+        }
+        style={({ pressed }) => [
+          styles.disclosureHead,
+          pressed && styles.pressedText,
+        ]}
+      >
+        <View style={styles.disclosureText}>
+          <Text style={type.section}>{title}</Text>
+          {open ? null : <Text style={type.caption}>{summary}</Text>}
+          {flagged && !open ? <UnsurePill /> : null}
+        </View>
+        <Chevron color={color.primary} />
+      </Pressable>
+      {open ? <View style={styles.disclosureBody}>{children}</View> : null}
+    </View>
+  );
+}
+
+/**
+ * Pick one of a few options: a box showing the choice that opens into a
+ * list of large rows, the chosen one marked with a tick and "seçili".
+ */
+export function ChoiceField<T extends string>({
+  label,
+  value,
+  options,
+  onChange,
+  placeholder,
+  flagged = false,
+}: {
+  label: string;
+  value: T | null;
+  options: readonly { value: T; label: string }[];
+  onChange: (value: T) => void;
+  placeholder: string;
+  flagged?: boolean;
+}) {
+  const [open, setOpen] = useState(false);
+  const chosen = options.find((option) => option.value === value);
+  const Chevron = open ? ChevronUpIcon : ChevronDownIcon;
+  return (
+    <View style={styles.field}>
+      <FieldLabel label={label} flagged={flagged} />
+      <Pressable
+        onPress={() => setOpen((o) => !o)}
+        accessibilityRole="button"
+        accessibilityState={{ expanded: open }}
+        accessibilityLabel={`${label}: ${chosen?.label ?? placeholder}${flagged ? ", Kontrol et" : ""}`}
+        style={({ pressed }) => [
+          styles.inputBox,
+          styles.choiceBox,
+          pressed && styles.rowPressed,
+        ]}
+      >
+        <Text
+          style={[
+            type.input,
+            styles.choiceText,
+            !chosen && { color: color.textMuted },
+          ]}
+        >
+          {chosen?.label ?? placeholder}
+        </Text>
+        <Chevron color={color.primary} />
+      </Pressable>
+      {open ? (
+        <View style={styles.choices} accessibilityRole="radiogroup">
+          {options.map((option, index) => {
+            const selected = option.value === value;
+            return (
+              <Pressable
+                key={option.value}
+                onPress={() => {
+                  onChange(option.value);
+                  setOpen(false);
+                }}
+                accessibilityRole="radio"
+                accessibilityState={{ checked: selected }}
+                accessibilityLabel={option.label}
+                style={({ pressed }) => [
+                  styles.choice,
+                  index < options.length - 1 && styles.rowDivider,
+                  pressed && styles.rowPressed,
+                ]}
+              >
+                <Text style={[type.body, styles.choiceText]}>
+                  {option.label}
+                </Text>
+                {selected ? (
+                  <View style={styles.chosen}>
+                    <CheckIcon color={color.primary} />
+                    <Text style={[type.label, styles.link]}>seçili</Text>
+                  </View>
+                ) : null}
+              </Pressable>
+            );
+          })}
+        </View>
+      ) : null}
+    </View>
   );
 }
 
@@ -434,6 +641,8 @@ const styles = StyleSheet.create({
     borderBottomColor: color.border,
   },
   rowPressed: { backgroundColor: color.primaryTint },
+  rowBody: { flex: 1, gap: space.xs },
+  rowLine: { flexDirection: "row", alignItems: "center", gap: space.sm },
   rowTitle: { flex: 1 },
   rowAmount: { fontVariant: ["tabular-nums"] },
   raw: {
@@ -442,6 +651,57 @@ const styles = StyleSheet.create({
     padding: space.md,
     gap: space.xxs,
   },
+  pill: {
+    flexDirection: "row",
+    alignItems: "center",
+    alignSelf: "flex-start",
+    gap: space.xxs,
+    backgroundColor: color.attention.bg,
+    borderColor: color.attention.border,
+    borderWidth: border.input,
+    borderRadius: radius.pill,
+    paddingHorizontal: space.sm,
+    paddingVertical: space.xxs,
+  },
+  labelRow: {
+    flexDirection: "row",
+    flexWrap: "wrap",
+    alignItems: "center",
+    gap: space.xs,
+  },
+  textButton: {
+    minHeight: minHeight.touch,
+    flexDirection: "row",
+    alignItems: "center",
+    gap: space.xs,
+    paddingHorizontal: space.xxs,
+  },
+  disclosureHead: {
+    minHeight: minHeight.touch,
+    flexDirection: "row",
+    alignItems: "center",
+    gap: space.sm,
+  },
+  disclosureText: { flex: 1, gap: space.xs, alignItems: "flex-start" },
+  disclosureBody: { gap: space.lg, marginTop: space.lg },
+  choiceBox: { paddingHorizontal: space.md, gap: space.sm },
+  choiceText: { flex: 1 },
+  choices: {
+    backgroundColor: color.surface,
+    borderColor: color.borderStrong,
+    borderWidth: border.input,
+    borderRadius: radius.input,
+    overflow: "hidden",
+  },
+  choice: {
+    minHeight: minHeight.button,
+    flexDirection: "row",
+    alignItems: "center",
+    gap: space.sm,
+    paddingHorizontal: space.md,
+    paddingVertical: space.xs,
+  },
+  chosen: { flexDirection: "row", alignItems: "center", gap: space.xxs },
   rawText: {
     fontFamily: Platform.select({ ios: "Menlo", default: "monospace" }),
   },

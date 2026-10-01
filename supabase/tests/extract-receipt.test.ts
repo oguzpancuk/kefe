@@ -35,14 +35,14 @@ async function receiptOf(owner: User, id: string): Promise<Row | undefined> {
   return rows[0] as Row | undefined;
 }
 
-async function itemsOf(owner: User, id: string): Promise<Row[]> {
+async function itemsOf(owner: User, id: string, select = "*"): Promise<Row[]> {
   // A refused read would also give no rows; make it fail instead, so "no
   // items" below cannot pass on a broken query.
   const { status, rows } = await rest(
     stack,
     owner,
     "GET",
-    `receipt_items?receipt_id=eq.${id}&order=line_no`,
+    `receipt_items?select=${select}&receipt_id=eq.${id}&order=line_no`,
   );
   if (status !== 200) throw new Error(`reading items: HTTP ${status}`);
   return rows as Row[];
@@ -81,7 +81,8 @@ describe("a valid mock result", () => {
       source: "mock",
       error_code: null,
       store_name: "Örnek Market",
-      total_kurus: 8640,
+      total_kurus: 61235,
+      unsure: [],
     });
     expect(daysAround).toContain(receipt?.purchased_on);
   });
@@ -89,14 +90,60 @@ describe("a valid mock result", () => {
   it("stores the mock's items in integer kuruş, in printed order", async () => {
     const items = await itemsOf(a, id);
     expect(items.map((item) => [item.line_no, item.amount_kurus])).toEqual([
-      [1, 1250],
-      [2, 3490],
-      [3, 3900],
+      [1, 3450],
+      [2, 8990],
+      [3, 18900],
+      [4, 4948],
+      [5, 1500],
+      [6, 13200],
+      [7, 9997],
     ]);
     for (const item of items) {
       expect(typeof item.raw_text).toBe("string");
       expect(item.raw_text).not.toBe("");
     }
+  });
+
+  // ROADMAP v1 1: every item field is stored; an unreadable brand stays
+  // null and keeps its unsure mark; sizes stay exact decimals.
+  it("stores every item field, an unread brand as null with its mark", async () => {
+    const items = await itemsOf(
+      a,
+      id,
+      "brand,quantity::text,quantity_unit,package_size::text,package_size_unit,package_count,category,unsure",
+    );
+    expect(items[2]).toEqual({
+      brand: null,
+      quantity: null,
+      quantity_unit: null,
+      package_size: "500.000",
+      package_size_unit: "g",
+      package_count: 1,
+      category: "food",
+      unsure: ["brand"],
+    });
+    expect(items[3]).toMatchObject({
+      quantity: "1.240",
+      quantity_unit: "kg",
+      package_size: null,
+      package_count: null,
+      unsure: [],
+    });
+  });
+
+  it("keeps the reader's output as it came, next to the columns", async () => {
+    const receipt = await receiptOf(a, id);
+    expect(receipt?.extraction).toMatchObject({
+      store: "Örnek Market",
+      total_kurus: 61235,
+      items: expect.arrayContaining([
+        expect.objectContaining({
+          raw_text: "B.PEYNIR TAM YAG 500G 189,00",
+          brand: null,
+          unsure: ["brand"],
+        }),
+      ]),
+    });
   });
 });
 
@@ -139,7 +186,7 @@ describe("a mock result that fails the schema", () => {
   it("clears the items of an earlier draft when a re-read fails", async () => {
     const again = await newReceipt(a);
     await invoke(stack, a, "extract-receipt", { receipt_id: again });
-    expect(await itemsOf(a, again)).toHaveLength(3);
+    expect(await itemsOf(a, again)).toHaveLength(7);
     const failed = await invoke(stack, a, "extract-receipt", {
       receipt_id: again,
       mock: "invalid",
@@ -173,10 +220,13 @@ describe("a call for another user's receipt", () => {
     const draft = await rest(stack, b, "POST", "rpc/record_extraction", {
       p_receipt_id: id,
       p_source: "mock",
-      p_store_name: "Sahte",
-      p_purchased_on: null,
-      p_total_kurus: 1,
-      p_items: [{ raw_text: "SAHTE", name: null, amount_kurus: 1 }],
+      p_extraction: {
+        store: "Sahte",
+        date: null,
+        total_kurus: 1,
+        unsure: [],
+        items: [{ raw_text: "SAHTE", name: null, amount_kurus: 1 }],
+      },
     });
     expect(draft.status).toBeGreaterThanOrEqual(400);
     const failure = await rest(
