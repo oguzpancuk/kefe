@@ -16,14 +16,18 @@ type Sending = {
 
 const sending = new Map<string, Sending>();
 
-/** Starts `send` for the receipt now; `sendAgain` repeats it. */
+/**
+ * Starts `send` for the receipt now; `sendAgain` runs `again`, which is
+ * `send` itself unless given (waiting on a reading is retried by reading).
+ */
 export function trackSending(
   receiptId: string,
   send: () => Promise<SendResult>,
+  again: () => Promise<SendResult> = send,
 ): void {
   // Kept after it settles: Kontrol et may open after a quick send ends,
   // and still needs to know how it ended. A few entries per session.
-  sending.set(receiptId, { attempt: send(), again: send });
+  sending.set(receiptId, { attempt: send(), again });
 }
 
 /** The latest attempt to send the receipt, if this session made one. */

@@ -84,7 +84,10 @@
   and the duplicate dialog clipped at 200 % text. Now Kontrol et waits
   (`waitForReading`: polls the status, asks for the reading itself if
   nothing moves for 20 s) and the dialog scrolls. Test seen red first
-  (2 of 39 failing against a stub).
+  (2 of 39 failing against a stub). Second pass: after such a wait ended
+  in failure, "Tekrar dene" repeated the wait and found the same
+  failure; `trackSending` now takes the retry separately (reading
+  again). `pending.test.ts` seen red first (1 of 3).
 - Open: "Tekrar fotoğraf çek" and a failed receipt left behind keep a
   `failed` row and its photo (they never count). Removing them belongs
   with delete (v1 5) or the 90-day image retention.

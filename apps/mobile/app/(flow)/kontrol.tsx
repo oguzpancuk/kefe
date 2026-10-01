@@ -160,7 +160,13 @@ export default function Check() {
         // Still being sent or read (the page was reloaded meanwhile):
         // keep "Fiş okunuyor" and wait for the reading under way.
         if (!sent) {
-          trackSending(id, () => waitForReading(client, id));
+          trackSending(
+            id,
+            () => waitForReading(client, id),
+            // "Tekrar dene" after that reads again; waiting would only
+            // find the same failure.
+            () => retryReading(client, id),
+          );
           setRound((n) => n + 1);
         } else {
           setState({ kind: "failed", failure: notReadable });
