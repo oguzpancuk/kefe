@@ -47,6 +47,45 @@
   browser, and the battery has no browser step. Screens with an input
   beside a button should be driven at 320 px until it has one.
 
+## 2026-10-01 — v1 2: processing states, retry, duplicate warning
+
+- Migration `20261001120000_retry_duplicates.sql`: `receipts.image_sha256`
+  (hex SHA-256 of the photo, computed by the app with `expo-crypto`'s
+  `digest`), `create_receipt(id, key, image path, hash)` that makes the
+  receipt for an idempotency key or answers the one already there (the
+  key decides, not the id), and `save_receipt(..., p_allow_duplicate)`:
+  a draft whose photo hash, or whose store (case and spaces ignored),
+  date and final total, match a saved receipt of the same person is
+  refused with HTTP 409, code `KF001`, the match in `details`. The
+  refusal rolls the whole call back; nothing is deleted. A per-person
+  advisory lock keeps two copies saved at once from both passing.
+- App: a send is safe to repeat. The photo goes up with `upsert`, the
+  receipt comes from `create_receipt`, and a draft already read is not
+  read again. Kontrol et shows "Bu fiş okunamadı" or "Fiş gönderilemedi"
+  (each saying "Hiçbir şey kaydedilmedi.") with "Tekrar dene" (the same
+  photo and key again; after a reload, only the reading) and "Tekrar
+  fotoğraf çek" (a new receipt). The duplicate dialog offers "Kaydetme"
+  (primary: back home, the draft stays unsaved) and "Yine de kaydet".
+  The picking and sending moved from Ana Sayfa to `src/receipts/add.ts`.
+- Red runs: app 13 of 67 failing against stubs; `copy.test.ts` (no
+  internal state name in the app's source) seen red with "sırada" put on
+  the reading screen; the Supabase suite failing in CI on PR #10's first
+  commit (no `create_receipt`, no duplicate check).
+- Verified: the migration on a scratch Postgres 16 with stubbed
+  auth/storage (create twice → one row, failure then re-read, image and
+  content warnings, case-insensitive store, "Yine de kaydet", another
+  user's key and id); the web flow driven with Playwright against an
+  in-memory fake (a read failure then "Tekrar dene" → 1 receipt, 2
+  uploads to the same name; a cut-off upload then "Tekrar dene" → 1
+  receipt); screenshots in `docs/screenshots/v1-2/`.
+- Open: "Tekrar fotoğraf çek" and a failed receipt left behind keep a
+  `failed` row and its photo (they never count). Removing them belongs
+  with delete (v1 5) or the 90-day image retention.
+- Open: the hash is the app's word for its own photo; a re-encoded
+  photo of the same paper has another hash, and only the store, date and
+  total match then.
+- Next ROADMAP item: v1 3 (home complete).
+
 ## 2026-10-01 — v1 1: receipt model complete in core, the check screen
 
 - `@kefe/core`: items carry all seven fields (name, brand, quantity,
