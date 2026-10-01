@@ -140,6 +140,7 @@ export async function sendReceipt(
   client: SupabaseClient,
   receipt: PreparedReceipt,
   image: ArrayBuffer,
+  _imageSha256?: string | null,
 ): Promise<Result<object>> {
   try {
     const upload = await client.storage
@@ -342,6 +343,7 @@ export async function saveReceipt(
   client: SupabaseClient,
   idempotencyKey: string,
   changes: { items: readonly DraftItem[]; receipt?: ReceiptFacts },
+  _options: { allowDuplicate?: boolean } = {},
 ): Promise<Result<{ totalKurus: Kurus }>> {
   const failure: Failure = {
     title: "Fiş kaydedilemedi.",
@@ -426,4 +428,16 @@ export async function loadMonthTotal(
   } catch {
     return { ok: false, failure: loadFailed };
   }
+}
+
+// STUB (red run only): replaced by the real implementation.
+export function retryReading(
+  _client: SupabaseClient,
+  _id: string,
+): Promise<Result<object>> {
+  return Promise.resolve({ ok: false, failure: readFailed });
+}
+
+export function hexOf(_digest: ArrayBuffer): string {
+  return "";
 }

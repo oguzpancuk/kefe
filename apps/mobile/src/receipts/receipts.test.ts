@@ -4,7 +4,9 @@ import {
   imageTypeOf,
   loadDraft,
   loadMonthTotal,
+  hexOf,
   prepareReceipt,
+  retryReading,
   saveReceipt,
   sendReceipt,
 } from "./receipts";
@@ -28,7 +30,7 @@ function json(status: number, body: unknown) {
   });
 }
 
-type Call = { method: string; url: URL; body: unknown };
+type Call = { method: string; url: URL; headers: Headers; body: unknown };
 
 /** A client whose every request goes to `answer`; `calls` records them. */
 function setup(answer: (call: Call) => Response | Promise<Response>) {
@@ -38,6 +40,7 @@ function setup(answer: (call: Call) => Response | Promise<Response>) {
     const call: Call = {
       method: init?.method ?? "GET",
       url: new URL(String(input)),
+      headers: new Headers(init?.headers),
       body: typeof raw === "string" ? JSON.parse(raw) : raw,
     };
     calls.push(call);
@@ -210,65 +213,155 @@ describe("sendReceipt", () => {
     contentType: "image/jpeg",
   };
   const image = new Uint8Array([0xff, 0xd8, 0xff]).buffer;
+  const SHA = "ab".repeat(32);
 
-  it("uploads, creates the receipt with its key, then asks for the reading", async () => {
-    const { client, calls } = setup((call) => {
-      if (call.url.pathname.startsWith("/storage/"))
-        return json(200, { Key: `receipts/${receipt.imagePath}` });
-      if (call.url.pathname === "/rest/v1/receipts") return json(201, []);
-      return json(200, {
+  /** A backend whose receipt for the key is in `status` after create. */
+  function backend(
+    status: string,
+    reading: () => Response = () =>
+      json(200, {
         receipt_id: RECEIPT,
         status: "needs_review",
         source: "mock",
-      });
+      }),
+  ) {
+    return setup((call) => {
+      if (call.url.pathname.startsWith("/storage/"))
+        return json(200, { Key: `receipts/${receipt.imagePath}` });
+      if (call.url.pathname === "/rest/v1/rpc/create_receipt")
+        return json(200, [{ ...draftRow, status }]);
+      return reading();
     });
+  }
 
-    expect(await sendReceipt(client, receipt, image)).toEqual({ ok: true });
+  it("uploads, creates the receipt for its key, then asks for the reading", async () => {
+    const { client, calls } = backend("uploading");
+
+    expect(await sendReceipt(client, receipt, image, SHA)).toEqual({
+      ok: true,
+    });
     expect(calls.map((c) => `${c.method} ${c.url.pathname}`)).toEqual([
       `POST /storage/v1/object/receipts/${USER}/${RECEIPT}.jpg`,
-      "POST /rest/v1/receipts",
+      "POST /rest/v1/rpc/create_receipt",
       "POST /functions/v1/extract-receipt",
     ]);
     expect(calls[1]?.body).toEqual({
-      id: RECEIPT,
-      idempotency_key: KEY,
-      image_path: `${USER}/${RECEIPT}.jpg`,
+      p_id: RECEIPT,
+      p_idempotency_key: KEY,
+      p_image_path: `${USER}/${RECEIPT}.jpg`,
+      p_image_sha256: SHA,
     });
     expect(calls[2]?.body).toEqual({ receipt_id: RECEIPT });
   });
 
-  it("stops after a refused upload, with a plain message", async () => {
+  // ROADMAP v1 2: re-sending after the network dropped mid-upload must
+  // end in one receipt. The photo may already be stored, so it is sent
+  // again over itself rather than refused as a duplicate object.
+  it("sends the photo so that a second send replaces it", async () => {
+    const { client, calls } = backend("uploading");
+    await sendReceipt(client, receipt, image, SHA);
+    expect(calls[0]?.headers.get("x-upsert")).toBe("true");
+  });
+
+  it("does not read the receipt again when a re-send finds the draft ready", async () => {
+    const { client, calls } = backend("needs_review");
+    expect(await sendReceipt(client, receipt, image, SHA)).toEqual({
+      ok: true,
+    });
+    expect(calls.map((c) => c.url.pathname)).not.toContain(
+      "/functions/v1/extract-receipt",
+    );
+  });
+
+  it("reads again a receipt whose reading failed before", async () => {
+    const { client, calls } = backend("failed");
+    expect(await sendReceipt(client, receipt, image, SHA)).toEqual({
+      ok: true,
+    });
+    expect(calls.map((c) => c.url.pathname)).toContain(
+      "/functions/v1/extract-receipt",
+    );
+  });
+
+  it("stops after a refused upload, with a plain message and nothing saved", async () => {
     const { client, calls } = setup(() =>
       json(400, { statusCode: "413", error: "Payload too large" }),
     );
-    expect(await sendReceipt(client, receipt, image)).toEqual({
+    expect(await sendReceipt(client, receipt, image, SHA)).toEqual({
       ok: false,
       failure: {
-        title: "Fiş gönderilemedi.",
-        detail: "İnternet bağlantınızı kontrol edip tekrar deneyin.",
+        title: "Fiş gönderilemedi",
+        detail:
+          "İnternet bağlantınızı kontrol edip tekrar deneyin. Hiçbir şey kaydedilmedi.",
       },
     });
     expect(calls).toHaveLength(1);
   });
 
   it("says the receipt could not be read when the reading fails", async () => {
-    const { client } = setup((call) => {
-      if (call.url.pathname.startsWith("/functions/"))
-        return json(200, {
-          receipt_id: RECEIPT,
-          status: "failed",
-          source: "mock",
-          error_code: "extraction_invalid",
-        });
-      return json(201, []);
-    });
-    expect(await sendReceipt(client, receipt, image)).toEqual({
+    const { client } = backend("uploading", () =>
+      json(200, {
+        receipt_id: RECEIPT,
+        status: "failed",
+        source: "mock",
+        error_code: "extraction_invalid",
+      }),
+    );
+    expect(await sendReceipt(client, receipt, image, SHA)).toEqual({
       ok: false,
       failure: {
-        title: "Fiş okunamadı.",
-        detail: "Ana Sayfa'ya dönüp fişi yeniden ekleyin.",
+        title: "Bu fiş okunamadı",
+        detail:
+          "Fotoğraf bulanık olabilir ya da fişin bir kısmı görünmüyor olabilir. Hiçbir şey kaydedilmedi.",
       },
     });
+  });
+
+  it("says the receipt was not sent when the connection drops during the reading", async () => {
+    const { client } = backend("uploading", () => {
+      throw new TypeError("Failed to fetch");
+    });
+    expect(await sendReceipt(client, receipt, image, SHA)).toMatchObject({
+      ok: false,
+      failure: { title: "Fiş gönderilemedi" },
+    });
+  });
+});
+
+describe("retryReading", () => {
+  it("asks extract-receipt to read the same receipt again", async () => {
+    const { client, calls } = setup(() =>
+      json(200, {
+        receipt_id: RECEIPT,
+        status: "needs_review",
+        source: "mock",
+      }),
+    );
+    expect(await retryReading(client, RECEIPT)).toEqual({ ok: true });
+    expect(calls).toHaveLength(1);
+    expect(calls[0]?.url.pathname).toBe("/functions/v1/extract-receipt");
+    expect(calls[0]?.body).toEqual({ receipt_id: RECEIPT });
+  });
+
+  it("says the receipt could not be read when it fails again", async () => {
+    const { client } = setup(() =>
+      json(200, {
+        receipt_id: RECEIPT,
+        status: "failed",
+        source: "mock",
+        error_code: "extraction_invalid",
+      }),
+    );
+    expect(await retryReading(client, RECEIPT)).toMatchObject({
+      ok: false,
+      failure: { title: "Bu fiş okunamadı" },
+    });
+  });
+});
+
+describe("hexOf", () => {
+  it("writes a digest as lowercase hex, two digits a byte", () => {
+    expect(hexOf(new Uint8Array([0, 1, 0xab, 0xff]).buffer)).toBe("0001abff");
   });
 });
 
@@ -409,6 +502,7 @@ describe("saveReceipt", () => {
         total_kurus: 5240,
         unsure: [],
       },
+      p_allow_duplicate: false,
     });
   });
 
@@ -421,6 +515,52 @@ describe("saveReceipt", () => {
       p_idempotency_key: KEY,
       p_items: [],
       p_receipt: {},
+      p_allow_duplicate: false,
+    });
+  });
+
+  // ROADMAP v1 2: a receipt that looks saved already comes back as a
+  // warning naming the saved one, not as a failure and not as a save.
+  it("turns the duplicate refusal into a warning naming the saved receipt", async () => {
+    const { client } = setup(() =>
+      json(409, {
+        code: "KF001",
+        message: "this receipt may be saved already",
+        details: JSON.stringify({
+          reason: "image",
+          receipt_id: RECEIPT,
+          store_name: "Migros",
+          purchased_on: "2026-09-28",
+          total_kurus: 61235,
+        }),
+        hint: null,
+      }),
+    );
+    expect(await saveReceipt(client, KEY, { items: [] })).toEqual({
+      ok: false,
+      duplicate: {
+        storeName: "Migros",
+        purchasedOn: "2026-09-28",
+        totalKurus: 61235,
+      },
+    });
+  });
+
+  it("asks to save anyway only when the person chose Yine de kaydet", async () => {
+    const { client, calls } = setup(() =>
+      json(200, [{ ...draftRow, status: "saved", total_kurus: 4990 }]),
+    );
+    await saveReceipt(client, KEY, { items: [] }, { allowDuplicate: true });
+    expect(calls[0]?.body).toMatchObject({ p_allow_duplicate: true });
+  });
+
+  it("treats a duplicate answer it cannot read as a failed save", async () => {
+    const { client } = setup(() =>
+      json(409, { code: "KF001", message: "x", details: "not json" }),
+    );
+    expect(await saveReceipt(client, KEY, { items: [] })).toMatchObject({
+      ok: false,
+      failure: { title: "Fiş kaydedilemedi." },
     });
   });
 
