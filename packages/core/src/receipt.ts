@@ -96,7 +96,7 @@ export const extractedReceiptSchema = z.object({
 export type ExtractedItem = z.infer<typeof extractedItemSchema>;
 export type ExtractedReceipt = z.infer<typeof extractedReceiptSchema>;
 /** What an adapter may send: defaulted fields may be left out. */
-export type ExtractionInput = z.input<typeof extractedReceiptSchema>;
+export type ReaderOutput = z.input<typeof extractedReceiptSchema>;
 
 /** Why a receipt ended `failed`; stored on the receipt, never shown raw. */
 export const extractionErrorCodes = [

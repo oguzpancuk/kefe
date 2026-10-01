@@ -170,10 +170,9 @@ export function createHandler({
       ? await rpc("record_extraction", {
           p_receipt_id: receiptId,
           p_source: adapter.source,
-          p_store_name: result.receipt.store,
-          p_purchased_on: result.receipt.date,
-          p_total_kurus: result.receipt.total_kurus,
-          p_items: result.receipt.items,
+          // Exactly what the schema accepted: unknowns as null, unsure
+          // marks included, every value in its checked form.
+          p_extraction: result.receipt,
         })
       : await rpc("record_extraction_failure", {
           p_receipt_id: receiptId,

@@ -35,7 +35,7 @@ export {
 } from "./receipt.ts";
 export type {
   Category,
-  ExtractionInput,
+  ReaderOutput,
   ItemField,
   ReceiptField,
   ExtractedItem,
