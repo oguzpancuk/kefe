@@ -8,18 +8,28 @@ import {
 } from "@kefe/core";
 import { router, useLocalSearchParams } from "expo-router";
 import { useEffect, useState } from "react";
-import { StyleSheet, Text, View } from "react-native";
+import { ScrollView, StyleSheet, Text, View } from "react-native";
 import { EditFacts } from "../../src/receipts/EditFacts";
 import { EditItem } from "../../src/receipts/EditItem";
-import { noteSaved, sendingOf } from "../../src/receipts/pending";
+import { pickAndSend } from "../../src/receipts/add";
+import {
+  noteSaved,
+  sendAgain,
+  sendingOf,
+  trackSending,
+} from "../../src/receipts/pending";
 import {
   loadDraft,
+  retryReading,
   saveReceipt,
+  waitForReading,
   type Draft,
   type DraftItem,
+  type Duplicate,
   type Failure,
   type ReceiptFacts,
 } from "../../src/receipts/receipts";
+import { useAuth } from "../../src/auth/AuthProvider";
 import { supabase } from "../../src/supabase";
 import {
   Alert,
@@ -34,8 +44,15 @@ import {
   Title,
   UnsurePill,
 } from "../../src/ui/components";
-import { Mark, PencilIcon } from "../../src/ui/icons";
-import { color, radius, space, type } from "../../src/ui/theme";
+import {
+  AlertIcon,
+  CameraIcon,
+  CopyIcon,
+  Mark,
+  PencilIcon,
+  RetryIcon,
+} from "../../src/ui/icons";
+import { color, radius, screenPadding, space, type } from "../../src/ui/theme";
 
 type State =
   | { kind: "reading" }
@@ -43,8 +60,9 @@ type State =
   | { kind: "draft"; draft: Draft };
 
 const notReadable: Failure = {
-  title: "Fiş okunamadı.",
-  detail: "Ana Sayfa'ya dönüp fişi yeniden ekleyin.",
+  title: "Bu fiş okunamadı",
+  detail:
+    "Fotoğraf bulanık olabilir ya da fişin bir kısmı görünmüyor olabilir. Hiçbir şey kaydedilmedi.",
 };
 
 const goHome = () => router.replace("/");
@@ -92,9 +110,20 @@ const sameJson = (a: unknown, b: unknown) =>
 // "Kalemi düzelt". "Kaydet" saves once, however often it is pressed;
 // nothing has to be confirmed one by one. "Vazgeç" leaves the draft
 // unsaved: it never counts.
+//
+// ROADMAP v1 2 (10-Okunamadi.png, 11-AyniFis.png): when sending or
+// reading fails, a plain message with "Tekrar dene", which sends the same
+// receipt again (same key: still one receipt), and "Tekrar fotoğraf çek".
+// When the draft looks like a receipt saved before, Kaydet asks first:
+// "Kaydetme" (the safe choice) or "Yine de kaydet". Nothing is deleted.
 export default function Check() {
   const { id } = useLocalSearchParams<{ id?: string }>();
+  const auth = useAuth();
   const [state, setState] = useState<State>({ kind: "reading" });
+  // Bumped by "Tekrar dene": waits for the new attempt, then reads again.
+  const [round, setRound] = useState(0);
+  const [retakeFailure, setRetakeFailure] = useState<Failure | null>(null);
+  const [duplicate, setDuplicate] = useState<Duplicate | null>(null);
   // The person's corrections; the draft keeps what was read.
   const [items, setItems] = useState<readonly DraftItem[]>([]);
   const [facts, setFacts] = useState<ReceiptFacts | null>(null);
@@ -111,6 +140,7 @@ export default function Check() {
       return;
     }
     let current = true;
+    setState({ kind: "reading" });
     void (async () => {
       const sent = await sendingOf(id);
       if (!current) return;
@@ -124,8 +154,23 @@ export default function Check() {
         setState({ kind: "failed", failure: loaded.failure });
       } else if (loaded.draft.status === "saved") {
         goHome();
-      } else if (loaded.draft.status !== "needs_review") {
+      } else if (loaded.draft.status === "failed") {
         setState({ kind: "failed", failure: notReadable });
+      } else if (loaded.draft.status !== "needs_review") {
+        // Still being sent or read (the page was reloaded meanwhile):
+        // keep "Fiş okunuyor" and wait for the reading under way.
+        if (!sent) {
+          trackSending(
+            id,
+            () => waitForReading(client, id),
+            // "Tekrar dene" after that reads again; waiting would only
+            // find the same failure.
+            () => retryReading(client, id),
+          );
+          setRound((n) => n + 1);
+        } else {
+          setState({ kind: "failed", failure: notReadable });
+        }
       } else {
         const { draft } = loaded;
         setItems(draft.items);
@@ -141,17 +186,38 @@ export default function Check() {
     return () => {
       current = false;
     };
-  }, [id]);
+  }, [id, round]);
+
+  function retry() {
+    const client = supabase;
+    if (!client || !id) return;
+    setRetakeFailure(null);
+    // The same photo and key again; after a reload only the reading.
+    if (!sendAgain(id)) trackSending(id, () => retryReading(client, id));
+    setRound((n) => n + 1);
+  }
+
+  async function retake() {
+    const client = supabase;
+    if (!client || auth.status !== "signedIn") return;
+    setRetakeFailure(null);
+    const added = await pickAndSend(client, auth.session.user.id);
+    if (added.kind === "refused") setRetakeFailure(added.failure);
+    if (added.kind !== "sending") return;
+    router.replace({ pathname: "/kontrol", params: { id: added.receiptId } });
+  }
 
   if (state.kind === "reading") return <Reading />;
 
   if (state.kind === "failed" || !facts) {
     const failure = state.kind === "failed" ? state.failure : notReadable;
     return (
-      <Screen center>
-        <Alert tone="danger" title={failure.title} detail={failure.detail} />
-        <Button label="Ana Sayfa'ya dön" onPress={goHome} />
-      </Screen>
+      <NotRead
+        failure={failure}
+        retakeFailure={retakeFailure}
+        onRetry={retry}
+        onRetake={() => void retake()}
+      />
     );
   }
 
@@ -195,7 +261,7 @@ export default function Check() {
   const flagged = (field: "store" | "date" | "total") =>
     facts.unsure.includes(field);
 
-  async function save() {
+  async function save(allowDuplicate = false) {
     const client = supabase;
     if (!client || saving || !facts) return;
     setSaving(true);
@@ -210,16 +276,26 @@ export default function Check() {
       totalKurus: draft.totalKurus,
       unsure: draft.unsure,
     };
-    const result = await saveReceipt(client, draft.idempotencyKey, {
-      items: changedItems,
-      receipt: sameJson(facts, originalFacts) ? undefined : facts,
-    });
+    const result = await saveReceipt(
+      client,
+      draft.idempotencyKey,
+      {
+        items: changedItems,
+        receipt: sameJson(facts, originalFacts) ? undefined : facts,
+      },
+      { allowDuplicate },
+    );
     if (result.ok) {
       noteSaved();
       router.replace("/");
       return;
     }
     setSaving(false);
+    if ("duplicate" in result) {
+      setDuplicate(result.duplicate);
+      return;
+    }
+    setDuplicate(null);
     setSaveFailure(result.failure);
   }
 
@@ -308,8 +384,139 @@ export default function Check() {
         ) : null}
       </Screen>
       <Footer>
-        <Button label="Kaydet" onPress={save} busy={saving} />
+        <Button label="Kaydet" onPress={() => void save()} busy={saving} />
       </Footer>
+      {duplicate ? (
+        <DuplicateDialog
+          duplicate={duplicate}
+          saving={saving}
+          // "Kaydetme": the draft stays unsaved and never counts.
+          onKeep={goHome}
+          onSaveAnyway={() => void save(true)}
+        />
+      ) : null}
+    </View>
+  );
+}
+
+/**
+ * "Bu fiş okunamadı" (10-Okunamadi.png): what went wrong in plain words,
+ * that nothing was saved, "Tekrar dene" and "Tekrar fotoğraf çek".
+ */
+function NotRead({
+  failure,
+  retakeFailure,
+  onRetry,
+  onRetake,
+}: {
+  failure: Failure;
+  retakeFailure: Failure | null;
+  onRetry: () => void;
+  onRetake: () => void;
+}) {
+  return (
+    <View style={styles.page}>
+      <Screen>
+        <BackButton to="Ana Sayfa" onPress={goHome} />
+        <View style={styles.notRead}>
+          <View style={[styles.iconCircle, styles.dangerCircle]}>
+            <AlertIcon color={color.danger.fg} size={48} />
+          </View>
+          <Text
+            style={[type.title, styles.center]}
+            accessibilityRole="header"
+            accessibilityLiveRegion="assertive"
+          >
+            {failure.title}
+          </Text>
+          <Text style={[type.body, styles.muted, styles.center]}>
+            {failure.detail}
+          </Text>
+        </View>
+        {retakeFailure ? (
+          <Alert
+            tone="danger"
+            title={retakeFailure.title}
+            detail={retakeFailure.detail}
+          />
+        ) : null}
+      </Screen>
+      <Footer>
+        <View style={styles.actions}>
+          <Button label="Tekrar dene" icon={RetryIcon} onPress={onRetry} />
+          <Button
+            label="Tekrar fotoğraf çek"
+            variant="secondary"
+            icon={CameraIcon}
+            onPress={onRetake}
+          />
+        </View>
+      </Footer>
+    </View>
+  );
+}
+
+/**
+ * "Bu fiş daha önce kaydedilmiş olabilir" (11-AyniFis.png): the saved
+ * receipt it looks like, why that matters, and the safe choice first.
+ */
+function DuplicateDialog({
+  duplicate,
+  saving,
+  onKeep,
+  onSaveAnyway,
+}: {
+  duplicate: Duplicate;
+  saving: boolean;
+  onKeep: () => void;
+  onSaveAnyway: () => void;
+}) {
+  const named = [
+    duplicate.storeName,
+    duplicate.purchasedOn ? formatDate(duplicate.purchasedOn) : null,
+  ].filter((part) => part !== null);
+  return (
+    <View style={styles.scrim}>
+      {/* Scrolls when large text makes the dialog taller than the screen. */}
+      <ScrollView contentContainerStyle={styles.scrimContent}>
+        <View
+          style={styles.dialog}
+          role="dialog"
+          aria-modal
+          aria-labelledby="duplicate-title"
+          accessibilityViewIsModal
+        >
+          <View style={[styles.iconCircle, styles.attentionCircle]}>
+            <CopyIcon color={color.attention.fg} size={32} />
+          </View>
+          <Text
+            nativeID="duplicate-title"
+            style={type.section}
+            accessibilityRole="header"
+            accessibilityLiveRegion="assertive"
+          >
+            Bu fiş daha önce kaydedilmiş olabilir
+          </Text>
+          <View style={styles.match}>
+            <Text style={type.bodyStrong}>
+              {named.length > 0 ? named.join(" · ") : "Kayıtlı bir fiş"}
+            </Text>
+            <Text style={type.body}>{formatTl(duplicate.totalKurus)}</Text>
+          </View>
+          <Text style={[type.body, styles.muted]}>
+            Aynı fişi iki kez kaydederseniz toplam harcamanız iki kat görünür.
+          </Text>
+          <View style={styles.actions}>
+            <Button label="Kaydetme" onPress={onKeep} />
+            <Button
+              label="Yine de kaydet"
+              variant="secondary"
+              busy={saving}
+              onPress={onSaveAnyway}
+            />
+          </View>
+        </View>
+      </ScrollView>
     </View>
   );
 }
@@ -385,6 +592,54 @@ const styles = StyleSheet.create({
     justifyContent: "center",
   },
   center: { textAlign: "center" },
+  muted: { color: color.textMuted },
+  actions: { gap: space.sm },
+  notRead: {
+    alignItems: "center",
+    gap: space.lg,
+    paddingTop: space.xxxl,
+  },
+  iconCircle: {
+    borderRadius: radius.pill,
+    alignItems: "center",
+    justifyContent: "center",
+  },
+  dangerCircle: {
+    width: 120,
+    height: 120,
+    backgroundColor: color.danger.bg,
+  },
+  attentionCircle: {
+    width: 64,
+    height: 64,
+    backgroundColor: color.attention.bg,
+  },
+  scrim: {
+    ...StyleSheet.absoluteFill,
+    backgroundColor: "rgba(37,33,31,.55)",
+  },
+  scrimContent: {
+    flexGrow: 1,
+    justifyContent: "center",
+    padding: screenPadding,
+  },
+  dialog: {
+    width: "100%",
+    maxWidth: 480,
+    alignSelf: "center",
+    backgroundColor: color.surface,
+    borderRadius: 20,
+    padding: space.xl,
+    gap: space.lg,
+  },
+  match: {
+    backgroundColor: color.background,
+    borderColor: color.border,
+    borderWidth: 1,
+    borderRadius: radius.card,
+    padding: space.md,
+    gap: space.xxs,
+  },
   dots: { flexDirection: "row", gap: space.sm },
   dot: {
     width: 12,

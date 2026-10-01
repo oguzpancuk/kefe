@@ -1,21 +1,11 @@
 import { formatTl, istanbulMonth, type MonthTotal } from "@kefe/core";
-import { randomUUID } from "expo-crypto";
-import {
-  launchImageLibraryAsync,
-  UIImagePickerPreferredAssetRepresentationMode,
-} from "expo-image-picker";
 import { router, useFocusEffect } from "expo-router";
 import { useCallback, useState } from "react";
 import { StyleSheet, Text, View } from "react-native";
 import { useAuth } from "../../src/auth/AuthProvider";
-import { takeSavedNotice, trackSending } from "../../src/receipts/pending";
-import {
-  imageTypeOf,
-  loadMonthTotal,
-  prepareReceipt,
-  sendReceipt,
-  type Failure,
-} from "../../src/receipts/receipts";
+import { pickAndSend } from "../../src/receipts/add";
+import { takeSavedNotice } from "../../src/receipts/pending";
+import { loadMonthTotal, type Failure } from "../../src/receipts/receipts";
 import { supabase } from "../../src/supabase";
 import { Alert, Button, Card, Screen, Title } from "../../src/ui/components";
 import { Mark, PlusIcon } from "../../src/ui/icons";
@@ -62,40 +52,11 @@ export default function Home() {
     if (!client || auth.status !== "signedIn") return;
     setPickFailure(null);
     setJustSaved(false);
-    const picked = await launchImageLibraryAsync({
-      mediaTypes: ["images"],
-      quality: 0.8,
-      // iOS: hand over a JPEG rather than the library's HEIC original.
-      preferredAssetRepresentationMode:
-        UIImagePickerPreferredAssetRepresentationMode.Compatible,
-    });
-    const asset = picked.canceled ? undefined : picked.assets[0];
-    if (!asset) return;
-    const prepared = prepareReceipt(
-      auth.session.user.id,
-      imageTypeOf(asset),
-      randomUUID,
-    );
-    if (!prepared.ok) {
-      setPickFailure(prepared.failure);
-      return;
-    }
-    const { receipt } = prepared;
-    // Kontrol et opens at once and shows "Fiş okunuyor" until this ends.
-    trackSending(
-      receipt.id,
-      fetch(asset.uri)
-        .then((response) => response.arrayBuffer())
-        .then((image) => sendReceipt(client, receipt, image))
-        .catch(() => ({
-          ok: false as const,
-          failure: {
-            title: "Fiş gönderilemedi.",
-            detail: "Fotoğrafı yeniden seçip tekrar deneyin.",
-          },
-        })),
-    );
-    router.push({ pathname: "/kontrol", params: { id: receipt.id } });
+    const added = await pickAndSend(client, auth.session.user.id);
+    if (added.kind === "refused") setPickFailure(added.failure);
+    if (added.kind !== "sending") return;
+    // Kontrol et opens at once and shows "Fiş okunuyor" until the send ends.
+    router.push({ pathname: "/kontrol", params: { id: added.receiptId } });
   }
 
   return (

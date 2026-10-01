@@ -157,6 +157,33 @@ export function FlaskIcon(props: IconProps) {
 }
 
 /** The kefe scale-pan mark, from docs/design/logo/mark.svg. */
+export function RetryIcon(props: IconProps) {
+  return (
+    <Line {...props}>
+      <Path d="M20 12a8 8 0 1 1-2.6-5.9" />
+      <Path d="M20 4v5h-5" />
+    </Line>
+  );
+}
+
+export function CameraIcon(props: IconProps) {
+  return (
+    <Line {...props}>
+      <Path d="M4 8h3.5L9 5.5h6L16.5 8H20v11H4z" />
+      <Circle cx={12} cy={13} r={3.5} />
+    </Line>
+  );
+}
+
+export function CopyIcon(props: IconProps) {
+  return (
+    <Line {...props}>
+      <Path d="M9 9h11v11H9z" />
+      <Path d="M5 15H4V4h11v1" />
+    </Line>
+  );
+}
+
 export function Mark({ size = 48 }: { size?: number }) {
   return (
     <Decorative>
