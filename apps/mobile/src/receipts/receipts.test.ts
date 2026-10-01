@@ -62,7 +62,8 @@ const draftRow = {
   source: "mock",
   store_name: "Örnek Market",
   purchased_on: "2026-09-29",
-  total_kurus: 4740,
+  total_kurus: 4990,
+  unsure: ["date"],
 };
 
 const itemRows = [
@@ -71,14 +72,31 @@ const itemRows = [
     line_no: 1,
     raw_text: "EKMEK 1 AD 12,50",
     name: "Ekmek",
+    brand: null,
+    quantity: null,
+    quantity_unit: null,
+    package_size: null,
+    package_size_unit: null,
+    package_count: 1,
+    category: "food",
     amount_kurus: 1250,
+    unsure: [],
   },
   {
     id: ITEM_2,
     line_no: 2,
-    raw_text: "SUT 1 LT 34,90",
-    name: "Süt",
+    raw_text: "B.PEYNIR 500G 34,90",
+    name: "Beyaz peynir",
+    brand: null,
+    // numeric(12,3) read as text: exact, never a float.
+    quantity: "0.500",
+    quantity_unit: "kg",
+    package_size: "500.000",
+    package_size_unit: "g",
+    package_count: null,
+    category: null,
     amount_kurus: 3490,
+    unsure: ["brand", "amount"],
   },
 ];
 
@@ -271,23 +289,60 @@ describe("loadDraft", () => {
         isSample: true,
         storeName: "Örnek Market",
         purchasedOn: "2026-09-29",
+        totalKurus: 4990,
+        unsure: ["date"],
         items: [
           {
             id: ITEM_1,
             rawText: "EKMEK 1 AD 12,50",
             name: "Ekmek",
+            brand: null,
+            quantity: null,
+            packageSize: null,
+            packageCount: 1,
+            category: "food",
             amountKurus: 1250,
+            unsure: [],
           },
           {
             id: ITEM_2,
-            rawText: "SUT 1 LT 34,90",
-            name: "Süt",
+            rawText: "B.PEYNIR 500G 34,90",
+            name: "Beyaz peynir",
+            brand: null,
+            quantity: { value: "0.5", unit: "kg" },
+            packageSize: { value: "500", unit: "g" },
+            packageCount: null,
+            category: null,
             amountKurus: 3490,
+            unsure: ["brand", "amount"],
           },
         ],
       },
     });
     expect(calls[1]?.url.searchParams.get("order")).toBe("line_no.asc");
+    // Decimals are asked for as text, so they never pass through a float.
+    expect(calls[1]?.url.searchParams.get("select")).toContain(
+      "quantity::text",
+    );
+    expect(calls[1]?.url.searchParams.get("select")).toContain(
+      "package_size::text",
+    );
+  });
+
+  it.each([
+    ["a size without its unit", { package_size_unit: null }],
+    ["an unknown category", { category: "Gıda" }],
+    ["a size as a float", { package_size: 0.5 }],
+  ])("refuses an item row with %s", async (_case, change) => {
+    const { client } = setup((call) =>
+      json(
+        200,
+        call.url.pathname === "/rest/v1/receipts"
+          ? [draftRow]
+          : [{ ...itemRows[1], ...change }],
+      ),
+    );
+    expect(await loadDraft(client, RECEIPT)).toMatchObject({ ok: false });
   });
 
   it("refuses rows that fail the schema instead of showing them", async () => {
@@ -304,19 +359,68 @@ describe("loadDraft", () => {
 });
 
 describe("saveReceipt", () => {
-  it("sends the draft's key and only the corrected amounts", async () => {
+  it("sends the draft's key, every field of each changed item and the receipt's facts", async () => {
     const { client, calls } = setup(() =>
-      json(200, [{ ...draftRow, status: "saved", total_kurus: 4990 }]),
+      json(200, [{ ...draftRow, status: "saved", total_kurus: 5240 }]),
     );
-    const result = await saveReceipt(client, KEY, [
-      { id: ITEM_1, amountKurus: 1500 },
-    ]);
-    expect(result).toEqual({ ok: true, totalKurus: 4990 });
+    const result = await saveReceipt(client, KEY, {
+      items: [
+        {
+          id: ITEM_2,
+          rawText: "B.PEYNIR 500G 34,90",
+          name: "Beyaz peynir",
+          brand: "Köy",
+          quantity: null,
+          packageSize: { value: "250", unit: "g" },
+          packageCount: 2,
+          category: "food",
+          amountKurus: 3740,
+          unsure: [],
+        },
+      ],
+      receipt: {
+        storeName: "Bakkal",
+        purchasedOn: "2026-09-28",
+        totalKurus: 5240,
+        unsure: [],
+      },
+    });
+    expect(result).toEqual({ ok: true, totalKurus: 5240 });
     expect(calls).toHaveLength(1);
     expect(calls[0]?.url.pathname).toBe("/rest/v1/rpc/save_receipt");
     expect(calls[0]?.body).toEqual({
       p_idempotency_key: KEY,
-      p_items: [{ id: ITEM_1, amount_kurus: 1500 }],
+      p_items: [
+        {
+          id: ITEM_2,
+          name: "Beyaz peynir",
+          brand: "Köy",
+          quantity: null,
+          package_size: { value: "250", unit: "g" },
+          package_count: 2,
+          category: "food",
+          amount_kurus: 3740,
+          unsure: [],
+        },
+      ],
+      p_receipt: {
+        store_name: "Bakkal",
+        purchased_on: "2026-09-28",
+        total_kurus: 5240,
+        unsure: [],
+      },
+    });
+  });
+
+  it("leaves the receipt's facts out when nothing on them changed", async () => {
+    const { client, calls } = setup(() =>
+      json(200, [{ ...draftRow, status: "saved", total_kurus: 4990 }]),
+    );
+    await saveReceipt(client, KEY, { items: [] });
+    expect(calls[0]?.body).toEqual({
+      p_idempotency_key: KEY,
+      p_items: [],
+      p_receipt: {},
     });
   });
 
@@ -324,7 +428,7 @@ describe("saveReceipt", () => {
     const { client } = setup(() =>
       json(400, { code: "22023", message: "an item is not on this receipt" }),
     );
-    expect(await saveReceipt(client, KEY, [])).toEqual({
+    expect(await saveReceipt(client, KEY, { items: [] })).toEqual({
       ok: false,
       failure: {
         title: "Fiş kaydedilemedi.",

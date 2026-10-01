@@ -17,6 +17,7 @@ export const color = {
   textMuted: "#5C5550",
   border: "#DDD6CF",
   borderStrong: "#8C837C",
+  attention: { fg: "#7A4A00", bg: "#FFF1D1", border: "#D99A1E" },
   danger: { fg: "#A3261B", bg: "#FCEBE8" },
   success: { fg: "#25693F", bg: "#E5F2EA" },
 } as const;
