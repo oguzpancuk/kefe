@@ -160,6 +160,22 @@ export function hexOf(digest: ArrayBuffer): string {
   ).join("");
 }
 
+/**
+ * The photo's SHA-256 for the same-photo check, or null when it cannot be
+ * made (no WebCrypto on a page served over plain http): the receipt is
+ * still sent, only that check is skipped.
+ */
+export async function sha256OrNull(
+  digest: (data: Uint8Array<ArrayBuffer>) => Promise<ArrayBuffer>,
+  image: ArrayBuffer,
+): Promise<string | null> {
+  try {
+    return hexOf(await digest(new Uint8Array(image)));
+  } catch {
+    return null;
+  }
+}
+
 /** Asks `extract-receipt` (mock mode) to read the receipt; ends with the reading. */
 async function readReceipt(
   client: SupabaseClient,
@@ -275,13 +291,21 @@ export async function waitForReading(
 
 /**
  * "Tekrar dene" when the photo is no longer at hand (Kontrol et was
- * reloaded): reads the receipt already made once more.
+ * reloaded): reads the receipt already made once more, unless it was
+ * read already, so retrying a load never reads (and overwrites) a draft
+ * a second time.
  */
 export async function retryReading(
   client: SupabaseClient,
   id: string,
 ): Promise<Result<object>> {
   try {
+    const answer = await client.from("receipts").select("status").eq("id", id);
+    const rows = statusRowsSchema.safeParse(answer.data);
+    if (answer.error || !rows.success)
+      return { ok: false, failure: sendFailed };
+    const { status } = rows.data[0];
+    if (status === "needs_review" || status === "saved") return { ok: true };
     return await readReceipt(client, id);
   } catch {
     return { ok: false, failure: sendFailed };

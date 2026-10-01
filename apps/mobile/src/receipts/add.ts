@@ -6,10 +6,10 @@ import {
 } from "expo-image-picker";
 import { trackSending, type SendResult } from "./pending";
 import {
-  hexOf,
   imageTypeOf,
   prepareReceipt,
   sendReceipt,
+  sha256OrNull,
   type Failure,
 } from "./receipts";
 
@@ -46,11 +46,13 @@ export async function pickAndSend(
   if (!prepared.ok) return { kind: "refused", failure: prepared.failure };
   const { receipt } = prepared;
 
-  let photo: Promise<{ image: ArrayBuffer; sha256: string }> | null = null;
+  let photo: Promise<{ image: ArrayBuffer; sha256: string | null }> | null =
+    null;
   const readPhoto = async () => {
     const image = await (await fetch(asset.uri)).arrayBuffer();
-    const sha256 = hexOf(
-      await digest(CryptoDigestAlgorithm.SHA256, new Uint8Array(image)),
+    const sha256 = await sha256OrNull(
+      (data) => digest(CryptoDigestAlgorithm.SHA256, data),
+      image,
     );
     return { image, sha256 };
   };

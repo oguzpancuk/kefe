@@ -9,6 +9,7 @@ import {
   retryReading,
   saveReceipt,
   sendReceipt,
+  sha256OrNull,
   waitForReading,
 } from "./receipts";
 
@@ -330,33 +331,67 @@ describe("sendReceipt", () => {
 });
 
 describe("retryReading", () => {
-  it("asks extract-receipt to read the same receipt again", async () => {
-    const { client, calls } = setup(() =>
-      json(200, {
-        receipt_id: RECEIPT,
-        status: "needs_review",
-        source: "mock",
-      }),
+  /** The receipt is in `status`; extract-receipt answers `reading`. */
+  function backend(status: string, reading = "needs_review") {
+    return setup((call) =>
+      call.url.pathname === "/rest/v1/receipts"
+        ? json(200, [{ status }])
+        : json(200, {
+            receipt_id: RECEIPT,
+            status: reading,
+            source: "mock",
+            ...(reading === "failed"
+              ? { error_code: "extraction_invalid" }
+              : {}),
+          }),
     );
+  }
+
+  it("asks extract-receipt to read a failed receipt again", async () => {
+    const { client, calls } = backend("failed");
     expect(await retryReading(client, RECEIPT)).toEqual({ ok: true });
-    expect(calls).toHaveLength(1);
-    expect(calls[0]?.url.pathname).toBe("/functions/v1/extract-receipt");
-    expect(calls[0]?.body).toEqual({ receipt_id: RECEIPT });
+    expect(calls.map((c) => c.url.pathname)).toEqual([
+      "/rest/v1/receipts",
+      "/functions/v1/extract-receipt",
+    ]);
+    expect(calls[1]?.body).toEqual({ receipt_id: RECEIPT });
   });
 
+  // Review of PR #10: retrying only the load must not read (and pay for)
+  // a draft again, overwriting what was read.
+  it.each(["needs_review", "saved"])(
+    "does not read again a receipt that is %s",
+    async (status) => {
+      const { client, calls } = backend(status);
+      expect(await retryReading(client, RECEIPT)).toEqual({ ok: true });
+      expect(calls.map((c) => c.url.pathname)).not.toContain(
+        "/functions/v1/extract-receipt",
+      );
+    },
+  );
+
   it("says the receipt could not be read when it fails again", async () => {
-    const { client } = setup(() =>
-      json(200, {
-        receipt_id: RECEIPT,
-        status: "failed",
-        source: "mock",
-        error_code: "extraction_invalid",
-      }),
-    );
+    const { client } = backend("failed", "failed");
     expect(await retryReading(client, RECEIPT)).toMatchObject({
       ok: false,
       failure: { title: "Bu fiş okunamadı" },
     });
+  });
+});
+
+// Review of PR #10: a photo whose hash cannot be made (no WebCrypto on
+// plain http) is still sent, only without the same-photo check.
+describe("sha256OrNull", () => {
+  const bytes = new Uint8Array([1, 2]).buffer;
+
+  it("writes the digest as hex", async () => {
+    const digest = () => Promise.resolve(new Uint8Array([0xab, 0x01]).buffer);
+    expect(await sha256OrNull(digest, bytes)).toBe("ab01");
+  });
+
+  it("gives null when the digest fails", async () => {
+    const digest = () => Promise.reject(new Error("crypto.subtle undefined"));
+    expect(await sha256OrNull(digest, bytes)).toBeNull();
   });
 });
 

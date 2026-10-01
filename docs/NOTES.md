@@ -88,6 +88,10 @@
   in failure, "Tekrar dene" repeated the wait and found the same
   failure; `trackSending` now takes the retry separately (reading
   again). `pending.test.ts` seen red first (1 of 3).
+- Review findings fixed (tests seen red first, 4 of 46): `retryReading`
+  checks the status first, so "Tekrar dene" on a load that failed never
+  reads (and overwrites) a draft again; a photo whose hash cannot be made
+  (no WebCrypto on plain http) is sent without it (`sha256OrNull`).
 - Open: "Tekrar fotoğraf çek" and a failed receipt left behind keep a
   `failed` row and its photo (they never count). Removing them belongs
   with delete (v1 5) or the 90-day image retention.
