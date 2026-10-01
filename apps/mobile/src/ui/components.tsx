@@ -50,6 +50,8 @@ export function Screen({
         { paddingTop: insets.top + space.xl },
       ]}
       keyboardShouldPersistTaps="handled"
+      // iOS: scroll a field and its button out from under the keyboard.
+      automaticallyAdjustKeyboardInsets
     >
       <View style={styles.column}>{children}</View>
     </ScrollView>
