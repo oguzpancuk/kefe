@@ -49,11 +49,23 @@ const notReadable: Failure = {
 
 const goHome = () => router.replace("/");
 
-/** "Beyaz peynir 500 g", "Domates 1,24 kg": the name with its size. */
+/**
+ * "Beyaz peynir 500 g", "Beyaz peynir 2 × 250 g", "Domates 1,24 kg": the
+ * name with its size. An unread name shows the printed line as it is.
+ */
 function itemTitle(item: DraftItem): string {
+  if (item.name === null) return item.rawText;
   const size = item.packageSize ?? item.quantity;
-  const name = item.name ?? item.rawText;
-  return size ? `${name} ${formatMeasure(size)}` : name;
+  if (!size) return item.name;
+  const count =
+    item.packageSize && item.packageCount && item.packageCount > 1
+      ? `${item.packageCount} × `
+      : "";
+  // No-break spaces keep "2 × 250 g" together when the line wraps.
+  return `${item.name} ${count}${formatMeasure(size)}`.replace(
+    / (?=×|[^ ]+$)|(?<=×) /g,
+    "\u00a0",
+  );
 }
 
 function mismatchText(mismatch: TotalMismatch): Failure {
